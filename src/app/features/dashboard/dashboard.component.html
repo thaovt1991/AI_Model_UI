@@ -1,0 +1,149 @@
+<div class="dashboard">
+  <aside class="sidebar">
+    <header class="dashboard__header">
+      <h1>AI Local</h1>
+      <p>ML.NET + LLM local</p>
+    </header>
+
+    <nav class="tabs" role="tablist" aria-label="AI tools">
+      <button
+        type="button"
+        role="tab"
+        class="tabs__btn"
+        [class.tabs__btn--active]="activeTab() === 'chat'"
+        (click)="setTab('chat')"
+      >
+        <span class="tabs__icon">AI</span>
+        <span>
+          <strong>Chatbot LLM</strong>
+          <small>Trò chuyện realtime</small>
+        </span>
+      </button>
+      <button
+        type="button"
+        role="tab"
+        class="tabs__btn"
+        [class.tabs__btn--active]="activeTab() === 'predict'"
+        (click)="setTab('predict')"
+      >
+        <span class="tabs__icon">ML</span>
+        <span>
+          <strong>Dự đoán ML.NET</strong>
+          <small>Regression mẫu</small>
+        </span>
+      </button>
+    </nav>
+  </aside>
+
+  <main class="dashboard__content">
+    @if (activeTab() === 'predict') {
+      <section class="panel" aria-label="Dự đoán ML.NET">
+        <h2>Dự đoán giá nhà</h2>
+        <p class="panel__hint">
+          Nhập thông tin mẫu — Frontend gọi <code>POST /api/ai/predict</code>.
+        </p>
+
+        <form class="form" (ngSubmit)="onPredict()">
+          <label class="form__field">
+            <span>Diện tích (m²)</span>
+            <input
+              type="number"
+              min="1"
+              [ngModel]="size()"
+              (ngModelChange)="size.set($event)"
+              name="size"
+              required
+            />
+          </label>
+
+          <label class="form__field">
+            <span>Số phòng ngủ</span>
+            <input
+              type="number"
+              min="1"
+              [ngModel]="bedrooms()"
+              (ngModelChange)="bedrooms.set($event)"
+              name="bedrooms"
+              required
+            />
+          </label>
+
+          <button type="submit" class="btn btn--primary" [disabled]="predictLoading()">
+            @if (predictLoading()) {
+              Đang dự đoán...
+            } @else {
+              Dự đoán
+            }
+          </button>
+        </form>
+
+        @if (predictError()) {
+          <p class="alert alert--error">{{ predictError() }}</p>
+        }
+
+        @if (formattedPrice()) {
+          <div class="result">
+            <span class="result__label">Kết quả dự đoán</span>
+            <strong class="result__value">{{ formattedPrice() }}</strong>
+            @if (predictMessage()) {
+              <p class="result__message">{{ predictMessage() }}</p>
+            }
+          </div>
+        }
+      </section>
+    }
+
+    @if (activeTab() === 'chat') {
+      <section class="panel panel--chat" aria-label="Chatbot LLM Local">
+        <h2>Chat với LLM local</h2>
+        <p class="panel__hint">
+          Frontend gọi <code>POST /api/ai/chat/stream</code> — token hiển thị dần khi Backend sinh ra.
+        </p>
+
+        <div class="chat__messages" #chatMessages>
+          @for (msg of messages(); track $index) {
+            <div
+              class="chat__bubble"
+              [class.chat__bubble--user]="msg.role === 'user'"
+              [class.chat__bubble--assistant]="msg.role === 'assistant'"
+            >
+              <span class="chat__role">{{ msg.role === 'user' ? 'Bạn' : 'AI' }}</span>
+              @if (msg.content) {
+                <p>{{ msg.content }}</p>
+              } @else {
+                <p class="chat__typing">Đang suy nghĩ...</p>
+              }
+              @if (msg.isMock) {
+                <small class="chat__mock">Phản hồi mock (chưa có file .gguf)</small>
+              }
+            </div>
+          }
+        </div>
+
+        @if (chatError()) {
+          <p class="alert alert--error">{{ chatError() }}</p>
+        }
+
+        <div class="chat__input-row">
+          <textarea
+            #chatInputBox
+            rows="2"
+            placeholder="Nhập câu hỏi..."
+            [ngModel]="chatInput()"
+            (ngModelChange)="chatInput.set($event)"
+            (keydown)="onChatKeydown($event)"
+            name="chatInput"
+          ></textarea>
+          <button
+            type="button"
+            class="btn btn--primary"
+            (click)="onSendChat()"
+            [disabled]="chatLoading() || !chatInput().trim()"
+          >
+            Gửi
+          </button>
+        </div>
+      </section>
+    }
+  </main>
+</div>
