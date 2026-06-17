@@ -39,9 +39,9 @@
     @if (activeTab() === 'predict') {
       <section class="panel" aria-label="Dự đoán ML.NET">
         <h2>Dự đoán giá nhà</h2>
-        <p class="panel__hint">
+        <!-- <p class="panel__hint">
           Nhập thông tin mẫu — Frontend gọi <code>POST /api/ai/predict</code>.
-        </p>
+        </p> -->
 
         <form class="form" (ngSubmit)="onPredict()">
           <label class="form__field">
@@ -96,9 +96,9 @@
     @if (activeTab() === 'chat') {
       <section class="panel panel--chat" aria-label="Chatbot LLM Local">
         <h2>Chat với LLM local</h2>
-        <p class="panel__hint">
+        <!-- <p class="panel__hint">
           Frontend gọi <code>POST /api/ai/chat/stream</code> — token hiển thị dần khi Backend sinh ra.
-        </p>
+        </p> -->
 
         <div class="chat__messages" #chatMessages>
           @for (msg of messages(); track $index) {
