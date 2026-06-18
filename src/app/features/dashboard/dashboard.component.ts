@@ -2,6 +2,7 @@ import {
   AfterViewInit,
   Component,
   ElementRef,
+  HostListener,
   ViewChild,
   computed,
   inject,
@@ -9,7 +10,7 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AiService } from '../../core/services/ai.service';
-import { ChatMessage, DashboardTab } from '../../core/models/ai.models';
+import { ChatMessage, DashboardTab, DocumentInfo } from '../../core/models/ai.models';
 
 @Component({
   selector: 'app-dashboard',
@@ -27,10 +28,11 @@ export class DashboardComponent implements AfterViewInit {
   @ViewChild('chatInputBox')
   private chatInputBox?: ElementRef<HTMLTextAreaElement>;
 
-  // Tab đang chọn trên Dashboard
+  @ViewChild('fileInput')
+  private fileInput?: ElementRef<HTMLInputElement>;
+
   readonly activeTab = signal<DashboardTab>('chat');
 
-  // --- ML.NET Predict state ---
   readonly size = signal(85);
   readonly bedrooms = signal(3);
   readonly predictLoading = signal(false);
@@ -50,7 +52,6 @@ export class DashboardComponent implements AfterViewInit {
     }).format(price);
   });
 
-  // --- Chat state ---
   readonly chatInput = signal('');
   readonly chatLoading = signal(false);
   readonly chatError = signal<string | null>(null);
@@ -58,19 +59,126 @@ export class DashboardComponent implements AfterViewInit {
     {
       role: 'assistant',
       content:
-        'Xin chào! Tôi là chatbot chạy local qua LLamaSharp. Hãy đặt file .gguf vào Backend để dùng model thật.',
+        'Xin chào! Bấm biểu tượng cài đặt góc phải để upload và chọn tài liệu nội bộ — AI sẽ dùng làm ngữ cảnh trả lời.',
     },
   ]);
 
+  // --- Tài liệu nội bộ (RAG) ---
+  readonly documents = signal<DocumentInfo[]>([]);
+  readonly selectedDocumentIds = signal<string[]>([]);
+  readonly uploadLoading = signal(false);
+  readonly documentError = signal<string | null>(null);
+
+  readonly hasSelectedDocuments = computed(() => this.selectedDocumentIds().length > 0);
+  readonly docsModalOpen = signal(false);
+
   ngAfterViewInit(): void {
     this.focusChatInput();
+    this.loadDocuments();
   }
 
   setTab(tab: DashboardTab): void {
     this.activeTab.set(tab);
     if (tab === 'chat') {
       this.focusChatInput();
+      this.loadDocuments();
     }
+  }
+
+  loadDocuments(): void {
+    this.aiService.listDocuments().subscribe({
+      next: (docs) => {
+        this.documents.set(docs);
+        const validIds = new Set(docs.map((d) => d.id));
+        this.selectedDocumentIds.update((ids) => ids.filter((id) => validIds.has(id)));
+      },
+      error: () => {
+        this.documentError.set('Không tải được danh sách tài liệu.');
+      },
+    });
+  }
+
+  openDocsModal(): void {
+    this.documentError.set(null);
+    this.docsModalOpen.set(true);
+    this.loadDocuments();
+  }
+
+  closeDocsModal(): void {
+    this.docsModalOpen.set(false);
+  }
+
+  @HostListener('document:keydown.escape')
+  onEscapeKey(): void {
+    if (this.docsModalOpen()) {
+      this.closeDocsModal();
+    }
+  }
+
+  openFilePicker(): void {
+    this.fileInput?.nativeElement.click();
+  }
+
+  onFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    this.uploadLoading.set(true);
+    this.documentError.set(null);
+
+    this.aiService.uploadDocument(file).subscribe({
+      next: (res) => {
+        this.uploadLoading.set(false);
+        input.value = '';
+        this.loadDocuments();
+        this.selectedDocumentIds.update((ids) =>
+          ids.includes(res.id) ? ids : [...ids, res.id],
+        );
+      },
+      error: (err) => {
+        this.uploadLoading.set(false);
+        input.value = '';
+        this.documentError.set(
+          err.error?.message ?? 'Upload thất bại. Kiểm tra định dạng file.',
+        );
+      },
+    });
+  }
+
+  toggleDocument(id: string): void {
+    this.selectedDocumentIds.update((ids) =>
+      ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id],
+    );
+  }
+
+  isDocumentSelected(id: string): boolean {
+    return this.selectedDocumentIds().includes(id);
+  }
+
+  removeDocument(id: string, event: Event): void {
+    event.stopPropagation();
+    this.aiService.deleteDocument(id).subscribe({
+      next: () => {
+        this.selectedDocumentIds.update((ids) => ids.filter((x) => x !== id));
+        this.loadDocuments();
+      },
+      error: () => {
+        this.documentError.set('Không xóa được tài liệu.');
+      },
+    });
+  }
+
+  formatFileSize(bytes: number): string {
+    if (bytes < 1024) {
+      return `${bytes} B`;
+    }
+    if (bytes < 1024 * 1024) {
+      return `${(bytes / 1024).toFixed(1)} KB`;
+    }
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
   onPredict(): void {
@@ -79,7 +187,6 @@ export class DashboardComponent implements AfterViewInit {
     this.predictedPrice.set(null);
     this.predictMessage.set(null);
 
-    // FE gửi JSON { size, bedrooms } → BE map sang PredictRequest
     this.aiService
       .predict({ size: this.size(), bedrooms: this.bedrooms() })
       .subscribe({
@@ -103,6 +210,8 @@ export class DashboardComponent implements AfterViewInit {
       return;
     }
 
+    const docIds = this.selectedDocumentIds();
+
     this.messages.update((list) => [
       ...list,
       { role: 'user', content: text },
@@ -114,11 +223,16 @@ export class DashboardComponent implements AfterViewInit {
     this.scrollChatToBottom();
     this.focusChatInput();
 
-    // FE gửi { message } → BE stream text/plain từng token qua LLamaSharp.
     try {
-      await this.aiService.streamChat({ message: text }, (token) => {
-        this.appendToLastAssistantMessage(token);
-      });
+      await this.aiService.streamChat(
+        {
+          message: text,
+          documentIds: docIds.length > 0 ? docIds : undefined,
+        },
+        (token) => {
+          this.appendToLastAssistantMessage(token);
+        },
+      );
 
       this.markMockReplyIfNeeded();
     } catch {
