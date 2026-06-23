@@ -1,11 +1,9 @@
-// Jenkins Declarative Pipeline — build Angular AI_Model_UI
-// Yêu cầu Jenkins agent: Node.js 20+ (khuyến nghị LTS), npm 10+
+// Jenkins Pipeline — build Angular AI_Model_UI
+// Hỗ trợ cả Windows agent (bat) và Linux agent (sh)
 pipeline {
     agent any
 
     tools {
-        // Tên tool khai báo trong Jenkins: Manage Jenkins → Tools → NodeJS installations
-        // Đặt tên trùng "NodeJS-20" hoặc sửa lại cho khớp môi trường của bạn
         nodejs 'NodeJS-20'
     }
 
@@ -24,7 +22,7 @@ pipeline {
 
     environment {
         APP_DIR = 'AI_Model_UI'
-        DIST_DIR = 'dist/AI_Model_UI'
+        DIST_GLOB = 'dist/AI_Model_UI/**/*'
         CI = 'true'
     }
 
@@ -44,10 +42,31 @@ pipeline {
         stage('Install dependencies') {
             steps {
                 dir(env.APP_DIR) {
-                    sh 'node -v'
-                    sh 'npm -v'
-                    // npm ci: cài đúng version trong package-lock.json — phù hợp CI
-                    sh 'npm ci'
+                    script {
+                        if (isUnix()) {
+                            sh '''
+                                node -v
+                                npm -v
+                                if [ -f package-lock.json ]; then
+                                  npm ci
+                                else
+                                  echo "WARN: Khong co package-lock.json — dung npm install. Nen commit package-lock.json vao Git."
+                                  npm install
+                                fi
+                            '''
+                        } else {
+                            bat '''
+                                node -v
+                                npm -v
+                                if exist package-lock.json (
+                                  npm ci
+                                ) else (
+                                  echo WARN: Khong co package-lock.json — dung npm install. Nen commit package-lock.json vao Git.
+                                  npm install
+                                )
+                            '''
+                        }
+                    }
                 }
             }
         }
@@ -55,11 +74,22 @@ pipeline {
         stage('Configure API URL') {
             steps {
                 dir(env.APP_DIR) {
-                    sh """
-                        sed -i "s|apiBaseUrl:.*|apiBaseUrl: '${params.API_BASE_URL}',|" src/environments/environment.ts
-                        echo '--- environment.ts sau khi cấu hình ---'
-                        cat src/environments/environment.ts
-                    """
+                    script {
+                        if (isUnix()) {
+                            sh """
+                                sed -i "s|apiBaseUrl:.*|apiBaseUrl: '${params.API_BASE_URL}',|" src/environments/environment.ts
+                                cat src/environments/environment.ts
+                            """
+                        } else {
+                            powershell """
+                                \$path = 'src/environments/environment.ts'
+                                \$content = Get-Content \$path -Raw
+                                \$content = \$content -replace 'apiBaseUrl:.*', "apiBaseUrl: '${params.API_BASE_URL}',"
+                                Set-Content -Path \$path -Value \$content -Encoding UTF8
+                                Get-Content \$path
+                            """
+                        }
+                    }
                 }
             }
         }
@@ -67,7 +97,13 @@ pipeline {
         stage('Build Angular') {
             steps {
                 dir(env.APP_DIR) {
-                    sh "npm run build -- --configuration=${params.BUILD_CONFIG}"
+                    script {
+                        if (isUnix()) {
+                            sh "npm run build -- --configuration=${params.BUILD_CONFIG}"
+                        } else {
+                            bat "npm run build -- --configuration=${params.BUILD_CONFIG}"
+                        }
+                    }
                 }
             }
         }
@@ -75,7 +111,7 @@ pipeline {
         stage('Archive artifact') {
             steps {
                 dir(env.APP_DIR) {
-                    archiveArtifacts artifacts: "${env.DIST_DIR}/**/*", fingerprint: true
+                    archiveArtifacts artifacts: "${env.DIST_GLOB}", fingerprint: true
                 }
             }
         }
@@ -83,13 +119,10 @@ pipeline {
 
     post {
         success {
-            echo "Build UI thành công. Artifact: ${env.APP_DIR}/${env.DIST_DIR}"
+            echo "Build UI thành công. Artifact: ${env.APP_DIR}/dist/AI_Model_UI"
         }
         failure {
-            echo 'Build UI thất bại — xem log stage Install / Build.'
-        }
-        always {
-            cleanWs(deleteDirs: true, patterns: [[pattern: '**/node_modules', type: 'INCLUDE']])
+            echo 'Build UI thất bại — xem log các stage trước đó.'
         }
     }
 }
