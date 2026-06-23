@@ -185,6 +185,74 @@
     min-height: 560px;
     overflow: hidden;
   }
+
+  &--wip {
+    min-height: calc(100vh - 2.5rem);
+    display: grid;
+    place-items: center;
+  }
+}
+
+.wip {
+  width: min(520px, 100%);
+  text-align: center;
+  padding: 2rem 1.5rem;
+
+  h2 {
+    margin: 0 0 0.75rem;
+    color: #1e293b;
+  }
+
+  &__badge {
+    display: inline-block;
+    margin-bottom: 1rem;
+    padding: 0.35rem 0.85rem;
+    border-radius: 999px;
+    background: #fef3c7;
+    color: #b45309;
+    font-size: 0.8rem;
+    font-weight: 700;
+  }
+
+  &__icon {
+    display: grid;
+    place-items: center;
+    width: 72px;
+    height: 72px;
+    margin: 0 auto 1rem;
+    border-radius: 20px;
+    background: linear-gradient(135deg, #dbeafe, #e0e7ff);
+    color: #1d4ed8;
+    font-weight: 800;
+  }
+
+  &__lead {
+    margin: 0 0 1rem;
+    color: #64748b;
+    line-height: 1.6;
+  }
+
+  &__list {
+    margin: 0 0 1rem;
+    padding: 0.85rem 1rem;
+    text-align: left;
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    border-radius: 12px;
+    color: #475569;
+    font-size: 0.92rem;
+    line-height: 1.55;
+  }
+
+  &__hint {
+    margin: 0;
+    font-size: 0.88rem;
+    color: #94a3b8;
+
+    strong {
+      color: #2563eb;
+    }
+  }
 }
 
 .panel--chat h2,

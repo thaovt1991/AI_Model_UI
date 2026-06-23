@@ -29,7 +29,7 @@
         <span class="tabs__icon">ML</span>
         <span>
           <strong>Dự đoán ML.NET</strong>
-          <small>Regression mẫu</small>
+          <small>Đang phát triển</small>
         </span>
       </button>
     </nav>
@@ -49,11 +49,27 @@
 
   <main class="dashboard__content">
     @if (activeTab() === 'predict') {
+      <section class="panel panel--wip" aria-label="Dự đoán ML.NET">
+        <div class="wip">
+          <div class="wip__badge">Đang phát triển</div>
+          <div class="wip__icon" aria-hidden="true">ML</div>
+          <h2>Dự đoán ML.NET</h2>
+          <p class="wip__lead">
+            Tính năng dự đoán bằng học máy đang được xây dựng. Phiên bản tiếp theo sẽ hỗ trợ
+            nhập dữ liệu và nhận kết quả từ model ML.NET local.
+          </p>
+          <ul class="wip__list">
+            <li>Huấn luyện / nạp model regression &amp; classification</li>
+            <li>Form nhập thông tin dự đoán</li>
+            <li>Hiển thị kết quả và độ tin cậy</li>
+          </ul>
+          <p class="wip__hint">Hiện tại bạn có thể dùng tab <strong>Chatbot LLM</strong> để trò chuyện với AI.</p>
+        </div>
+      </section>
+
+      <!-- Giao diện cũ — dự đoán giá nhà (tạm ẩn, bỏ comment khi triển khai lại)
       <section class="panel" aria-label="Dự đoán ML.NET">
         <h2>Dự đoán giá nhà</h2>
-        <!-- <p class="panel__hint">
-          Nhập thông tin mẫu — Frontend gọi <code>POST /api/ai/predict</code>.
-        </p> -->
 
         <form class="form" (ngSubmit)="onPredict()">
           <label class="form__field">
@@ -103,6 +119,7 @@
           </div>
         }
       </section>
+      -->
     }
 
     @if (activeTab() === 'chat') {
