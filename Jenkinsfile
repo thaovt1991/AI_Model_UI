@@ -1,10 +1,8 @@
-// Jenkins Pipeline — build Angular AI_Model_UI
-// Hỗ trợ cả Windows agent (bat) và Linux agent (sh)
+// Jenkins Pipeline — build Angular AI_Model_UI (Windows + Linux)
 pipeline {
     agent any
 
     tools {
-        // nodejs 'NodeJS-20'
         nodejs 'node 20_19_6'
     }
 
@@ -12,18 +10,21 @@ pipeline {
         string(
             name: 'API_BASE_URL',
             defaultValue: 'http://localhost:5296/api/ai',
-            description: 'URL Backend API — ghi vào environment.ts trước khi build'
+            description: 'URL Backend API'
         )
         choice(
             name: 'BUILD_CONFIG',
             choices: ['production', 'development'],
-            description: 'Cấu hình Angular build'
+            description: 'Cau hinh Angular build'
+        )
+        string(
+            name: 'APP_DIR_OVERRIDE',
+            defaultValue: '',
+            description: 'De trong = tu dong tim. Hoac nhap: AI_Model_UI hoac . (root repo)'
         )
     }
 
     environment {
-        APP_DIR = 'AI_Model_UI'
-        DIST_GLOB = 'dist/AI_Model_UI/**/*'
         CI = 'true'
     }
 
@@ -40,6 +41,46 @@ pipeline {
             }
         }
 
+        stage('Detect project folder') {
+            steps {
+                script {
+                    echo '--- Noi dung thu muc workspace (root) ---'
+                    if (isUnix()) {
+                        sh 'ls -la'
+                    } else {
+                        bat 'dir'
+                    }
+
+                    if (params.APP_DIR_OVERRIDE?.trim()) {
+                        env.APP_DIR = params.APP_DIR_OVERRIDE.trim()
+                    } else if (fileExists('AI_Model_UI/package.json')) {
+                        // Monorepo: Job Model AI/AI_Model_UI/package.json
+                        env.APP_DIR = 'AI_Model_UI'
+                    } else if (fileExists('package.json')) {
+                        // Repo chi chua rieng project UI o root
+                        env.APP_DIR = '.'
+                    } else {
+                        if (isUnix()) {
+                            sh 'find . -name package.json 2>/dev/null || true'
+                        } else {
+                            bat 'dir /s /b package.json 2>nul || echo KHONG TIM THAY package.json'
+                        }
+                        error '''
+                            Khong tim thay package.json trong workspace Jenkins.
+
+                            Kiem tra:
+                            1. Git repo da push day du thu muc AI_Model_UI (package.json, src, angular.json...)
+                            2. Job Jenkins checkout dung branch/repo
+                            3. Hoac set parameter APP_DIR_OVERRIDE neu duong dan khac
+                        '''
+                    }
+
+                    env.DIST_GLOB = 'dist/AI_Model_UI/**/*'
+                    echo "Se build trong thu muc: ${env.APP_DIR}"
+                }
+            }
+        }
+
         stage('Install dependencies') {
             steps {
                 dir(env.APP_DIR) {
@@ -48,23 +89,13 @@ pipeline {
                             sh '''
                                 node -v
                                 npm -v
-                                if [ -f package-lock.json ]; then
-                                  npm ci
-                                else
-                                  echo "WARN: Khong co package-lock.json — dung npm install. Nen commit package-lock.json vao Git."
-                                  npm install
-                                fi
+                                if [ -f package-lock.json ]; then npm ci; else npm install; fi
                             '''
                         } else {
                             bat '''
                                 node -v
                                 npm -v
-                                if exist package-lock.json (
-                                  npm ci
-                                ) else (
-                                  echo WARN: Khong co package-lock.json — dung npm install. Nen commit package-lock.json vao Git.
-                                  npm install
-                                )
+                                if exist package-lock.json (npm ci) else (npm install)
                             '''
                         }
                     }
@@ -79,7 +110,6 @@ pipeline {
                         if (isUnix()) {
                             sh """
                                 sed -i "s|apiBaseUrl:.*|apiBaseUrl: '${params.API_BASE_URL}',|" src/environments/environment.ts
-                                cat src/environments/environment.ts
                             """
                         } else {
                             powershell """
@@ -87,7 +117,6 @@ pipeline {
                                 \$content = Get-Content \$path -Raw
                                 \$content = \$content -replace 'apiBaseUrl:.*', "apiBaseUrl: '${params.API_BASE_URL}',"
                                 Set-Content -Path \$path -Value \$content -Encoding UTF8
-                                Get-Content \$path
                             """
                         }
                     }
@@ -120,10 +149,10 @@ pipeline {
 
     post {
         success {
-            echo "Build UI thành công. Artifact: ${env.APP_DIR}/dist/AI_Model_UI"
+            echo "Build UI thanh cong: ${env.APP_DIR}/dist/AI_Model_UI"
         }
         failure {
-            echo 'Build UI thất bại — xem log các stage trước đó.'
+            echo 'Build that bai — xem stage Detect project folder de biet workspace co gi.'
         }
     }
 }
