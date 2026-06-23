@@ -1,0 +1,75 @@
+// Jenkins Pipeline cho Windows agent (PowerShell)
+pipeline {
+    agent any
+
+    tools {
+        nodejs 'NodeJS-20'
+    }
+
+    parameters {
+        string(
+            name: 'API_BASE_URL',
+            defaultValue: 'http://localhost:5296/api/ai',
+            description: 'URL Backend API'
+        )
+        choice(
+            name: 'BUILD_CONFIG',
+            choices: ['production', 'development'],
+            description: 'Cấu hình Angular build'
+        )
+    }
+
+    environment {
+        APP_DIR = 'AI_Model_UI'
+        DIST_DIR = 'dist\\AI_Model_UI'
+        CI = 'true'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Install dependencies') {
+            steps {
+                dir(env.APP_DIR) {
+                    bat 'node -v'
+                    bat 'npm -v'
+                    bat 'npm ci'
+                }
+            }
+        }
+
+        stage('Configure API URL') {
+            steps {
+                dir(env.APP_DIR) {
+                    powershell """
+                        \$path = 'src/environments/environment.ts'
+                        \$content = Get-Content \$path -Raw
+                        \$content = \$content -replace 'apiBaseUrl:.*', "apiBaseUrl: '${params.API_BASE_URL}',"
+                        Set-Content -Path \$path -Value \$content -NoNewline
+                        Get-Content \$path
+                    """
+                }
+            }
+        }
+
+        stage('Build Angular') {
+            steps {
+                dir(env.APP_DIR) {
+                    bat "npm run build -- --configuration=${params.BUILD_CONFIG}"
+                }
+            }
+        }
+
+        stage('Archive artifact') {
+            steps {
+                dir(env.APP_DIR) {
+                    archiveArtifacts artifacts: 'dist/AI_Model_UI/**/*', fingerprint: true
+                }
+            }
+        }
+    }
+}
