@@ -4,7 +4,8 @@ pipeline {
     agent any
 
     tools {
-        nodejs 'NodeJS-20'
+        // nodejs 'NodeJS-20'
+        nodejs 'node 20_19_6'
     }
 
     parameters {
