@@ -10,6 +10,7 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AiService } from '../../core/services/ai.service';
+import { createId } from '../../core/utils/id.util';
 import {
   ChatMessage,
   ChatTurn,
@@ -444,7 +445,7 @@ export class DashboardComponent implements AfterViewInit {
   }
 
   private resetChatUi(): void {
-    const newConversationId = crypto.randomUUID();
+    const newConversationId = createId();
     sessionStorage.setItem(CHAT_CONVERSATION_KEY, newConversationId);
     this.chatConversationId.set(newConversationId);
     this.messages.set([{ role: 'assistant', content: WELCOME_MESSAGE }]);
@@ -491,7 +492,7 @@ export class DashboardComponent implements AfterViewInit {
       return existing;
     }
 
-    const id = crypto.randomUUID();
+    const id = createId();
     sessionStorage.setItem(CHAT_CONVERSATION_KEY, id);
     return id;
   }
@@ -502,7 +503,7 @@ export class DashboardComponent implements AfterViewInit {
       return existing;
     }
 
-    const id = crypto.randomUUID();
+    const id = createId();
     localStorage.setItem(CHAT_PROFILE_KEY, id);
     return id;
   }
