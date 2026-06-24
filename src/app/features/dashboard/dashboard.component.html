@@ -126,20 +126,36 @@
       <section class="panel panel--chat" aria-label="Chatbot LLM Local">
         <div class="panel__header">
           <div class="panel__header-text">
-            <h2>Chat với LLM local</h2>
+            <h2>{{ chatTitle() }}</h2>
             @if (hasSelectedDocuments()) {
               <p class="panel__header-hint">
                 Đang dùng {{ selectedDocumentIds().length }} tài liệu làm ngữ cảnh
               </p>
             }
           </div>
-          <button
-            type="button"
-            class="icon-btn"
-            title="Tài liệu nội bộ"
-            aria-label="Mở cài đặt tài liệu"
-            (click)="openDocsModal()"
-          >
+          <div class="panel__header-actions">
+            <button
+              type="button"
+              class="icon-btn"
+              title="Cuộc chat mới"
+              aria-label="Cuộc chat mới"
+              (click)="startNewChat()"
+              [disabled]="chatLoading()"
+            >
+              <svg class="icon-btn__svg" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  fill="currentColor"
+                  d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2 10h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"
+                />
+              </svg>
+            </button>
+            <button
+              type="button"
+              class="icon-btn"
+              title="Thiết lập"
+              aria-label="Mở thiết lập"
+              (click)="openSettingsModal('documents')"
+            >
             <svg class="icon-btn__svg" viewBox="0 0 24 24" aria-hidden="true">
               <path
                 fill="currentColor"
@@ -150,32 +166,120 @@
               <span class="icon-btn__badge">{{ selectedDocumentIds().length }}</span>
             }
           </button>
+          </div>
         </div>
 
-        @if (docsModalOpen()) {
-          <div class="modal-backdrop" (click)="closeDocsModal()">
+        @if (settingsModalOpen()) {
+          <div class="modal-backdrop" (click)="closeSettingsModal()">
             <div
               class="modal"
               role="dialog"
               aria-modal="true"
-              aria-labelledby="docs-modal-title"
+              aria-labelledby="settings-modal-title"
               (click)="$event.stopPropagation()"
             >
               <header class="modal__header">
                 <div>
-                  <h3 id="docs-modal-title">Tài liệu nội bộ</h3>
-                  <p class="modal__subtitle">Upload và chọn file làm ngữ cảnh cho AI</p>
+                  <h3 id="settings-modal-title">Thiết lập</h3>
+                  <p class="modal__subtitle">Tên AI, tài liệu &amp; học model</p>
                 </div>
                 <button
                   type="button"
                   class="modal__close"
                   aria-label="Đóng"
-                  (click)="closeDocsModal()"
+                  (click)="closeSettingsModal()"
                 >
                   ×
                 </button>
               </header>
 
+              <nav class="modal-tabs" aria-label="Mục thiết lập">
+                <button
+                  type="button"
+                  class="modal-tabs__btn"
+                  [class.modal-tabs__btn--active]="settingsTab() === 'ai'"
+                  (click)="openSettingsModal('ai')"
+                >
+                  AI
+                </button>
+                <button
+                  type="button"
+                  class="modal-tabs__btn"
+                  [class.modal-tabs__btn--active]="settingsTab() === 'documents'"
+                  (click)="settingsTab.set('documents')"
+                >
+                  Tài liệu
+                </button>
+                <button
+                  type="button"
+                  class="modal-tabs__btn"
+                  [class.modal-tabs__btn--active]="settingsTab() === 'learning'"
+                  (click)="openSettingsModal('learning')"
+                >
+                  Học model
+                </button>
+                <button
+                  type="button"
+                  class="modal-tabs__btn"
+                  [class.modal-tabs__btn--active]="settingsTab() === 'memory'"
+                  (click)="openSettingsModal('memory')"
+                >
+                  Trí nhớ
+                </button>
+              </nav>
+
+              @if (settingsTab() === 'ai') {
+              <div class="learning-panel">
+                <p class="learning-panel__intro">
+                  Đặt tên cho AI — model sẽ tự giới thiệu đúng tên khi bạn hỏi. Tên được lưu trên server
+                  theo trình duyệt của bạn.
+                </p>
+
+                @if (aiNameError()) {
+                  <p class="alert alert--error">{{ aiNameError() }}</p>
+                }
+
+                <label class="form__field">
+                  <span>Tên AI</span>
+                  <input
+                    type="text"
+                    maxlength="32"
+                    placeholder="Ví dụ: Minerva, Tara..."
+                    [ngModel]="aiNameDraft()"
+                    (ngModelChange)="aiNameDraft.set($event)"
+                    [disabled]="aiNameSaving()"
+                  />
+                </label>
+                <p class="learning-panel__hint">Tối đa 32 ký tự. Để trống để dùng tên mặc định.</p>
+
+                <div class="learning-panel__stats">
+                  <button
+                    type="button"
+                    class="btn btn--primary"
+                    (click)="saveAiName()"
+                    [disabled]="aiNameSaving()"
+                  >
+                    @if (aiNameSaving()) {
+                      Đang lưu...
+                    } @else {
+                      Lưu tên
+                    }
+                  </button>
+                  @if (aiName() || aiNameDraft()) {
+                    <button
+                      type="button"
+                      class="btn btn--secondary"
+                      (click)="clearAiName()"
+                      [disabled]="aiNameSaving()"
+                    >
+                      Xóa tên
+                    </button>
+                  }
+                </div>
+              </div>
+              }
+
+              @if (settingsTab() === 'documents') {
               <div class="docs-panel">
                 <div class="docs-panel__header">
                   <span>Danh sách file</span>
@@ -243,9 +347,91 @@
                   </div>
                 }
               </div>
+              }
+
+              @if (settingsTab() === 'learning') {
+              <div class="learning-panel">
+                <p class="learning-panel__intro">
+                  <strong>Học vào model (LoRA):</strong> khi bật, AI sẽ train từ các cuộc chat
+                  (chạy nền khi máy rảnh). Khác với &quot;nhớ hội thoại&quot; — đây là sửa nhẹ bộ não model.
+                </p>
+
+                @if (learningError()) {
+                  <p class="alert alert--error">{{ learningError() }}</p>
+                }
+
+                <label class="setting-toggle">
+                  <span class="setting-toggle__text">
+                    <strong>Học vào model</strong>
+                    <small>Train LoRA từ chat — tốn CPU, chạy khi không ai dùng</small>
+                  </span>
+                  <input
+                    type="checkbox"
+                    [checked]="learningEnabled()"
+                    [disabled]="learningSaving()"
+                    (change)="onToggleLearningEnabled($event)"
+                  />
+                </label>
+
+                <label class="setting-toggle">
+                  <span class="setting-toggle__text">
+                    <strong>Gom dữ liệu từ chat</strong>
+                    <small>Lưu cặp hỏi/đáp vào file — chuẩn bị để train sau</small>
+                  </span>
+                  <input
+                    type="checkbox"
+                    [checked]="learningCollectData()"
+                    [disabled]="learningSaving()"
+                    (change)="onToggleCollectData($event)"
+                  />
+                </label>
+
+                <div class="learning-panel__stats">
+                  <div><span>Trạng thái</span><strong>{{ learningStatusLabel() }}</strong></div>
+                  <div><span>Mẫu đã gom</span><strong>{{ learningTotalSamples() }}</strong></div>
+                </div>
+
+                @if (learningSaving()) {
+                  <p class="learning-panel__hint">Đang lưu cài đặt...</p>
+                }
+              </div>
+              }
+
+              @if (settingsTab() === 'memory') {
+              <div class="memory-panel">
+                <p class="memory-panel__intro">
+                  Mỗi cuộc chat mới có mã riêng — F5 vẫn giữ đúng cuộc đang mở. Xóa trí nhớ bên dưới
+                  xóa hết mọi cuộc chat của bạn trên server.
+                </p>
+
+                <button
+                  type="button"
+                  class="btn btn--secondary btn--block"
+                  (click)="startNewChatFromSettings()"
+                  [disabled]="chatLoading()"
+                >
+                  Cuộc chat mới
+                </button>
+
+                <div class="memory-panel__danger">
+                  <p class="memory-panel__danger-title">Vùng nguy hiểm</p>
+                  <p class="memory-panel__danger-desc">
+                    Xóa toàn bộ lịch sử hội thoại đã lưu. Không thể hoàn tác.
+                  </p>
+                  <button
+                    type="button"
+                    class="btn btn--danger btn--block"
+                    (click)="clearPermanentMemory()"
+                    [disabled]="chatLoading()"
+                  >
+                    Xóa trí nhớ vĩnh viễn
+                  </button>
+                </div>
+              </div>
+              }
 
               <footer class="modal__footer">
-                <button type="button" class="btn btn--primary" (click)="closeDocsModal()">
+                <button type="button" class="btn btn--primary" (click)="closeSettingsModal()">
                   Xong
                 </button>
               </footer>

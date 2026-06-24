@@ -10,7 +10,20 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AiService } from '../../core/services/ai.service';
-import { ChatMessage, DashboardTab, DocumentInfo } from '../../core/models/ai.models';
+import {
+  ChatMessage,
+  ChatTurn,
+  DashboardTab,
+  DocumentInfo,
+  LearningSettingsResponse,
+  SettingsModalTab,
+} from '../../core/models/ai.models';
+
+const CHAT_CONVERSATION_KEY = 'ai_chat_conversation_id';
+const CHAT_PROFILE_KEY = 'ai_chat_profile_id';
+
+const WELCOME_MESSAGE =
+  'Xin chào! Mỗi cuộc chat có mã riêng — F5 vẫn giữ đúng cuộc đang mở. "Cuộc chat mới" bắt đầu cuộc trống; "Xóa trí nhớ" xóa hết mọi cuộc trên server.';
 
 @Component({
   selector: 'app-dashboard',
@@ -58,10 +71,21 @@ export class DashboardComponent implements AfterViewInit {
   readonly messages = signal<ChatMessage[]>([
     {
       role: 'assistant',
-      content:
-        'Xin chào! Bấm biểu tượng cài đặt góc phải để upload và chọn tài liệu nội bộ — AI sẽ dùng làm ngữ cảnh trả lời.',
+      content: WELCOME_MESSAGE,
     },
   ]);
+
+  readonly chatConversationId = signal(this.loadOrCreateConversationId());
+  readonly chatProfileId = signal(this.loadOrCreateProfileId());
+  readonly aiName = signal<string | null>(null);
+  readonly aiNameDraft = signal('');
+  readonly aiNameSaving = signal(false);
+  readonly aiNameError = signal<string | null>(null);
+
+  readonly chatTitle = computed(() => {
+    const name = this.aiName();
+    return name ? `Chat với ${name}` : 'Chat với LLM local';
+  });
 
   // --- Tài liệu nội bộ (RAG) ---
   readonly documents = signal<DocumentInfo[]>([]);
@@ -70,11 +94,36 @@ export class DashboardComponent implements AfterViewInit {
   readonly documentError = signal<string | null>(null);
 
   readonly hasSelectedDocuments = computed(() => this.selectedDocumentIds().length > 0);
-  readonly docsModalOpen = signal(false);
+  readonly settingsModalOpen = signal(false);
+  readonly settingsTab = signal<SettingsModalTab>('documents');
+
+  // --- Học model (LoRA) — bật/tắt từ UI ---
+  readonly learningEnabled = signal(false);
+  readonly learningCollectData = signal(true);
+  readonly learningTotalSamples = signal(0);
+  readonly learningStatus = signal<string>('Disabled');
+  readonly learningSaving = signal(false);
+  readonly learningError = signal<string | null>(null);
+
+  readonly learningStatusLabel = computed(() => {
+    const map: Record<string, string> = {
+      Disabled: 'Tắt',
+      Collecting: 'Đang gom dữ liệu',
+      Idle: 'Sẵn sàng train',
+      Queued: 'Chờ máy rảnh',
+      Training: 'Đang học...',
+      Ready: 'Đã học',
+      Failed: 'Lỗi train',
+    };
+    return map[this.learningStatus()] ?? this.learningStatus();
+  });
 
   ngAfterViewInit(): void {
     this.focusChatInput();
     this.loadDocuments();
+    this.loadChatProfile();
+    this.restoreChatHistory();
+    this.loadLearningSettings();
   }
 
   setTab(tab: DashboardTab): void {
@@ -98,20 +147,119 @@ export class DashboardComponent implements AfterViewInit {
     });
   }
 
-  openDocsModal(): void {
+  openSettingsModal(tab: SettingsModalTab = 'documents'): void {
     this.documentError.set(null);
-    this.docsModalOpen.set(true);
+    this.learningError.set(null);
+    this.aiNameError.set(null);
+    this.settingsTab.set(tab);
+    this.settingsModalOpen.set(true);
     this.loadDocuments();
+    if (tab === 'ai') {
+      this.loadChatProfile();
+    }
+    if (tab === 'learning' || tab === 'memory') {
+      this.loadLearningSettings();
+    }
+  }
+
+  closeSettingsModal(): void {
+    this.settingsModalOpen.set(false);
+  }
+
+  openDocsModal(): void {
+    this.openSettingsModal('documents');
   }
 
   closeDocsModal(): void {
-    this.docsModalOpen.set(false);
+    this.closeSettingsModal();
+  }
+
+  loadLearningSettings(): void {
+    this.aiService.getLearningSettings().subscribe({
+      next: (res) => this.applyLearningSettings(res),
+      error: () => {
+        this.learningError.set('Không tải được cài đặt học model.');
+      },
+    });
+  }
+
+  loadChatProfile(): void {
+    this.aiService.getChatProfile(this.chatProfileId()).subscribe({
+      next: (res) => {
+        const name = res.aiName?.trim() || null;
+        this.aiName.set(name);
+        this.aiNameDraft.set(name ?? '');
+      },
+      error: () => {
+        this.aiNameError.set('Không tải được tên AI.');
+      },
+    });
+  }
+
+  saveAiName(): void {
+    const draft = this.aiNameDraft().trim();
+    this.aiNameSaving.set(true);
+    this.aiNameError.set(null);
+
+    this.aiService
+      .updateChatProfile(this.chatProfileId(), { aiName: draft || null })
+      .subscribe({
+        next: (res) => {
+          const name = res.aiName?.trim() || null;
+          this.aiName.set(name);
+          this.aiNameDraft.set(name ?? '');
+          this.aiNameSaving.set(false);
+        },
+        error: () => {
+          this.aiNameError.set('Không lưu được tên AI.');
+          this.aiNameSaving.set(false);
+        },
+      });
+  }
+
+  clearAiName(): void {
+    this.aiNameDraft.set('');
+    this.saveAiName();
+  }
+
+  onToggleLearningEnabled(event: Event): void {
+    const checked = (event.target as HTMLInputElement).checked;
+    this.saveLearningSettings({ enabled: checked });
+  }
+
+  onToggleCollectData(event: Event): void {
+    const checked = (event.target as HTMLInputElement).checked;
+    this.saveLearningSettings({ collectData: checked });
+  }
+
+  private saveLearningSettings(patch: { enabled?: boolean; collectData?: boolean }): void {
+    this.learningSaving.set(true);
+    this.learningError.set(null);
+
+    this.aiService.updateLearningSettings(patch).subscribe({
+      next: (res) => {
+        this.applyLearningSettings(res);
+        this.learningSaving.set(false);
+      },
+      error: () => {
+        this.learningError.set('Không lưu được cài đặt.');
+        this.learningSaving.set(false);
+        this.loadLearningSettings();
+      },
+    });
+  }
+
+  private applyLearningSettings(res: LearningSettingsResponse): void {
+    this.learningEnabled.set(res.enabled);
+    this.learningCollectData.set(res.collectData);
+    this.learningTotalSamples.set(res.totalSamples);
+    this.learningStatus.set(res.status);
   }
 
   @HostListener('document:keydown.escape')
   onEscapeKey(): void {
-    if (this.docsModalOpen()) {
-      this.closeDocsModal();
+    if (this.settingsModalOpen()) {
+      this.closeSettingsModal();
     }
   }
 
@@ -211,6 +359,8 @@ export class DashboardComponent implements AfterViewInit {
     }
 
     const docIds = this.selectedDocumentIds();
+    const conversationId = this.chatConversationId();
+    const profileId = this.chatProfileId();
 
     this.messages.update((list) => [
       ...list,
@@ -228,6 +378,8 @@ export class DashboardComponent implements AfterViewInit {
         {
           message: text,
           documentIds: docIds.length > 0 ? docIds : undefined,
+          conversationId,
+          profileId,
         },
         (token) => {
           this.appendToLastAssistantMessage(token);
@@ -253,6 +405,106 @@ export class DashboardComponent implements AfterViewInit {
       event.preventDefault();
       this.onSendChat();
     }
+  }
+
+  startNewChatFromSettings(): void {
+    this.closeSettingsModal();
+    this.startNewChat();
+  }
+
+  startNewChat(): void {
+    const confirmed = confirm(
+      'Bắt đầu cuộc chat mới?\n\nMàn hình sẽ trống. F5 sau đó không còn hiện lại cuộc chat cũ.',
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    this.resetChatUi();
+  }
+
+  clearPermanentMemory(): void {
+    const confirmed = confirm(
+      'Xóa toàn bộ trí nhớ hội thoại trên server?\n\nHành động này không thể hoàn tác. AI sẽ không còn nhớ các lượt chat trước.',
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    const profileId = this.chatProfileId();
+    this.aiService.clearChatMemory(profileId).subscribe({
+      next: () => {
+        this.resetChatUi();
+        this.closeSettingsModal();
+      },
+      error: () => {
+        this.chatError.set('Không xóa được trí nhớ trên server.');
+      },
+    });
+  }
+
+  private resetChatUi(): void {
+    const newConversationId = crypto.randomUUID();
+    sessionStorage.setItem(CHAT_CONVERSATION_KEY, newConversationId);
+    this.chatConversationId.set(newConversationId);
+    this.messages.set([{ role: 'assistant', content: WELCOME_MESSAGE }]);
+    this.chatError.set(null);
+    this.focusChatInput();
+  }
+
+  private restoreChatHistory(): void {
+    this.aiService
+      .getChatMemory(this.chatProfileId(), this.chatConversationId())
+      .subscribe({
+      next: (turns) => {
+        if (turns.length === 0) {
+          return;
+        }
+
+        this.messages.set(this.buildMessagesFromHistory(turns));
+        this.scrollChatToBottom();
+      },
+      error: () => {
+        // Server cũ chưa có API — bỏ qua
+      },
+    });
+  }
+
+  private buildMessagesFromHistory(turns: ChatTurn[]): ChatMessage[] {
+    const messages: ChatMessage[] = [{ role: 'assistant', content: WELCOME_MESSAGE }];
+
+    for (const turn of turns) {
+      messages.push({ role: 'user', content: turn.userMessage });
+      messages.push({
+        role: 'assistant',
+        content: turn.assistantReply,
+        isMock: turn.assistantReply.startsWith('[Chế độ mock'),
+      });
+    }
+
+    return messages;
+  }
+
+  private loadOrCreateConversationId(): string {
+    const existing = sessionStorage.getItem(CHAT_CONVERSATION_KEY);
+    if (existing) {
+      return existing;
+    }
+
+    const id = crypto.randomUUID();
+    sessionStorage.setItem(CHAT_CONVERSATION_KEY, id);
+    return id;
+  }
+
+  private loadOrCreateProfileId(): string {
+    const existing = localStorage.getItem(CHAT_PROFILE_KEY);
+    if (existing) {
+      return existing;
+    }
+
+    const id = crypto.randomUUID();
+    localStorage.setItem(CHAT_PROFILE_KEY, id);
+    return id;
   }
 
   private appendToLastAssistantMessage(token: string): void {

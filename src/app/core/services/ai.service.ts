@@ -5,10 +5,15 @@ import { environment } from '../../../environments/environment';
 import {
   ChatRequest,
   ChatResponse,
+  ChatTurn,
   DocumentInfo,
   DocumentUploadResponse,
   PredictRequest,
   PredictResponse,
+  LearningSettingsResponse,
+  UpdateLearningSettingsRequest,
+  ChatProfileSettingsResponse,
+  UpdateChatProfileSettingsRequest,
 } from '../models/ai.models';
 
 @Injectable({ providedIn: 'root' })
@@ -42,6 +47,43 @@ export class AiService {
   /** Xóa tài liệu khỏi kho nội bộ */
   deleteDocument(id: string): Observable<void> {
     return this.http.delete<void>(`${this.baseUrl}/documents/${id}`);
+  }
+
+  clearChatMemory(profileId: string): Observable<void> {
+    return this.http.delete<void>(`${this.baseUrl}/chat/memory`, {
+      params: { profileId },
+    });
+  }
+
+  getChatMemory(profileId: string, conversationId: string): Observable<ChatTurn[]> {
+    return this.http.get<ChatTurn[]>(`${this.baseUrl}/chat/memory`, {
+      params: { profileId, conversationId },
+    });
+  }
+
+  getChatProfile(profileId: string): Observable<ChatProfileSettingsResponse> {
+    return this.http.get<ChatProfileSettingsResponse>(`${this.baseUrl}/chat/profile`, {
+      params: { profileId },
+    });
+  }
+
+  updateChatProfile(
+    profileId: string,
+    request: UpdateChatProfileSettingsRequest,
+  ): Observable<ChatProfileSettingsResponse> {
+    return this.http.put<ChatProfileSettingsResponse>(`${this.baseUrl}/chat/profile`, request, {
+      params: { profileId },
+    });
+  }
+
+  getLearningSettings(): Observable<LearningSettingsResponse> {
+    return this.http.get<LearningSettingsResponse>(`${this.baseUrl}/learning/settings`);
+  }
+
+  updateLearningSettings(
+    request: UpdateLearningSettingsRequest,
+  ): Observable<LearningSettingsResponse> {
+    return this.http.put<LearningSettingsResponse>(`${this.baseUrl}/learning/settings`, request);
   }
 
   async streamChat(
