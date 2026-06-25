@@ -3,6 +3,7 @@ import {
   Component,
   ElementRef,
   HostListener,
+  OnDestroy,
   ViewChild,
   computed,
   inject,
@@ -22,6 +23,34 @@ import {
 
 const CHAT_CONVERSATION_KEY = 'ai_chat_conversation_id';
 const CHAT_PROFILE_KEY = 'ai_chat_profile_id';
+const LEARNING_NOTIFIED_VERSION_KEY = 'ai_learning_notified_version';
+const LEARNING_NOTIFY_SETTINGS_KEY = 'ai_learning_notify_settings';
+const DEFAULT_LEARNING_NOTIFY_INTERVAL_MIN = 2;
+
+interface LearningNotifySettings {
+  enabled: boolean;
+  intervalMinutes: number;
+}
+
+function loadLearningNotifySettings(): LearningNotifySettings {
+  try {
+    const raw = localStorage.getItem(LEARNING_NOTIFY_SETTINGS_KEY);
+    if (!raw) {
+      return { enabled: false, intervalMinutes: DEFAULT_LEARNING_NOTIFY_INTERVAL_MIN };
+    }
+
+    const parsed = JSON.parse(raw) as Partial<LearningNotifySettings>;
+    const minutes = Number(parsed.intervalMinutes);
+    return {
+      enabled: Boolean(parsed.enabled),
+      intervalMinutes: Number.isFinite(minutes) && minutes >= 1 ? Math.min(minutes, 120) : DEFAULT_LEARNING_NOTIFY_INTERVAL_MIN,
+    };
+  } catch {
+    return { enabled: false, intervalMinutes: DEFAULT_LEARNING_NOTIFY_INTERVAL_MIN };
+  }
+}
+
+const initialLearningNotifySettings = loadLearningNotifySettings();
 
 const WELCOME_MESSAGE =
   'Xin chào! Mỗi cuộc chat có mã riêng — F5 vẫn giữ đúng cuộc đang mở. "Cuộc chat mới" bắt đầu cuộc trống; "Xóa trí nhớ" xóa hết mọi cuộc trên server.';
@@ -33,8 +62,12 @@ const WELCOME_MESSAGE =
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
 })
-export class DashboardComponent implements AfterViewInit {
+export class DashboardComponent implements AfterViewInit, OnDestroy {
   private readonly aiService = inject(AiService);
+  private learningPollTimer?: ReturnType<typeof setInterval>;
+  private notifiedAdapterVersion = Number(
+    localStorage.getItem(LEARNING_NOTIFIED_VERSION_KEY) ?? '0',
+  );
 
   @ViewChild('chatMessages')
   private chatMessages?: ElementRef<HTMLDivElement>;
@@ -105,6 +138,10 @@ export class DashboardComponent implements AfterViewInit {
   readonly learningStatus = signal<string>('Disabled');
   readonly learningSaving = signal(false);
   readonly learningError = signal<string | null>(null);
+  readonly learningNotice = signal<string | null>(null);
+  readonly learningTopics = signal<string[]>([]);
+  readonly learningNotifyEnabled = signal(initialLearningNotifySettings.enabled);
+  readonly learningNotifyIntervalMinutes = signal(initialLearningNotifySettings.intervalMinutes);
 
   readonly learningStatusLabel = computed(() => {
     const map: Record<string, string> = {
@@ -125,6 +162,13 @@ export class DashboardComponent implements AfterViewInit {
     this.loadChatProfile();
     this.restoreChatHistory();
     this.loadLearningSettings();
+    this.restartLearningPoll();
+  }
+
+  ngOnDestroy(): void {
+    if (this.learningPollTimer) {
+      clearInterval(this.learningPollTimer);
+    }
   }
 
   setTab(tab: DashboardTab): void {
@@ -233,6 +277,28 @@ export class DashboardComponent implements AfterViewInit {
     this.saveLearningSettings({ collectData: checked });
   }
 
+  onToggleLearningNotify(event: Event): void {
+    const checked = (event.target as HTMLInputElement).checked;
+    this.learningNotifyEnabled.set(checked);
+    this.persistLearningNotifySettings();
+    this.restartLearningPoll();
+  }
+
+  onLearningNotifyIntervalChange(value: number | string): void {
+    const minutes = Math.min(120, Math.max(1, Number(value) || DEFAULT_LEARNING_NOTIFY_INTERVAL_MIN));
+    this.learningNotifyIntervalMinutes.set(minutes);
+    this.persistLearningNotifySettings();
+    this.restartLearningPoll();
+  }
+
+  private persistLearningNotifySettings(): void {
+    const payload: LearningNotifySettings = {
+      enabled: this.learningNotifyEnabled(),
+      intervalMinutes: this.learningNotifyIntervalMinutes(),
+    };
+    localStorage.setItem(LEARNING_NOTIFY_SETTINGS_KEY, JSON.stringify(payload));
+  }
+
   private saveLearningSettings(patch: { enabled?: boolean; collectData?: boolean }): void {
     this.learningSaving.set(true);
     this.learningError.set(null);
@@ -255,6 +321,72 @@ export class DashboardComponent implements AfterViewInit {
     this.learningCollectData.set(res.collectData);
     this.learningTotalSamples.set(res.totalSamples);
     this.learningStatus.set(res.status);
+    this.learningTopics.set(res.learnedTopics ?? []);
+    this.checkLearningNotification(res);
+  }
+
+  dismissLearningNotice(): void {
+    this.learningNotice.set(null);
+  }
+
+  private restartLearningPoll(): void {
+    if (this.learningPollTimer) {
+      clearInterval(this.learningPollTimer);
+      this.learningPollTimer = undefined;
+    }
+
+    if (!this.learningNotifyEnabled()) {
+      return;
+    }
+
+    const intervalMs = this.learningNotifyIntervalMinutes() * 60_000;
+    this.learningPollTimer = setInterval(() => {
+      if (!this.learningEnabled()) {
+        return;
+      }
+
+      this.aiService.getLearningSettings().subscribe({
+        next: (res) => this.applyLearningSettings(res),
+      });
+    }, intervalMs);
+  }
+
+  private checkLearningNotification(res: LearningSettingsResponse): void {
+    if (!this.learningNotifyEnabled()) {
+      return;
+    }
+
+    if (
+      !res.enabled ||
+      res.adapterVersion <= 0 ||
+      !res.lastTrainingMessage ||
+      res.status !== 'Ready'
+    ) {
+      return;
+    }
+
+    if (res.adapterVersion <= this.notifiedAdapterVersion) {
+      return;
+    }
+
+    this.notifiedAdapterVersion = res.adapterVersion;
+    localStorage.setItem(LEARNING_NOTIFIED_VERSION_KEY, String(res.adapterVersion));
+
+    const aiLabel = this.aiName() ?? 'AI';
+    const notice = `${aiLabel} vừa hoàn tất học ngầm — ${res.lastTrainingMessage}.`;
+    this.learningNotice.set(notice);
+    this.pushLearningNoticeToChat(notice);
+  }
+
+  private pushLearningNoticeToChat(content: string): void {
+    this.messages.update((list) => [
+      ...list,
+      {
+        role: 'assistant',
+        content,
+      },
+    ]);
+    this.scrollChatToBottom();
   }
 
   @HostListener('document:keydown.escape')

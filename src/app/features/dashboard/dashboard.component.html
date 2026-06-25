@@ -169,6 +169,20 @@
           </div>
         </div>
 
+        @if (learningNotice()) {
+          <div class="alert alert--success learning-toast" role="status">
+            <p>{{ learningNotice() }}</p>
+            <button
+              type="button"
+              class="learning-toast__close"
+              aria-label="Đóng thông báo"
+              (click)="dismissLearningNotice()"
+            >
+              ×
+            </button>
+          </div>
+        }
+
         @if (settingsModalOpen()) {
           <div class="modal-backdrop" (click)="closeSettingsModal()">
             <div
@@ -386,10 +400,47 @@
                   />
                 </label>
 
+                <label class="setting-toggle">
+                  <span class="setting-toggle__text">
+                    <strong>Thông báo khi học xong</strong>
+                    <small>Hiện banner và tin nhắn khi model học ngầm thành công</small>
+                  </span>
+                  <input
+                    type="checkbox"
+                    [checked]="learningNotifyEnabled()"
+                    (change)="onToggleLearningNotify($event)"
+                  />
+                </label>
+
+                @if (learningNotifyEnabled()) {
+                  <label class="form__field">
+                    <span>Kiểm tra mỗi (phút)</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="120"
+                      [ngModel]="learningNotifyIntervalMinutes()"
+                      (ngModelChange)="onLearningNotifyIntervalChange($event)"
+                    />
+                  </label>
+                  <p class="learning-panel__hint">
+                    Đang kiểm tra mỗi {{ learningNotifyIntervalMinutes() }} phút khi bật học model.
+                  </p>
+                }
+
                 <div class="learning-panel__stats">
                   <div><span>Trạng thái</span><strong>{{ learningStatusLabel() }}</strong></div>
                   <div><span>Mẫu đã gom</span><strong>{{ learningTotalSamples() }}</strong></div>
                 </div>
+
+                @if (learningTopics().length > 0) {
+                  <p class="learning-panel__hint">
+                    Lần học gần nhất:
+                    @for (topic of learningTopics(); track topic; let last = $last) {
+                      {{ topic }}@if (!last) {; }
+                    }
+                  </p>
+                }
 
                 @if (learningSaving()) {
                   <p class="learning-panel__hint">Đang lưu cài đặt...</p>

@@ -64,6 +64,9 @@ export interface LearningSettingsResponse {
   adapterPath?: string | null;
   adapterVersion: number;
   lastError?: string | null;
+  lastTrainUtc?: string | null;
+  learnedTopics?: string[];
+  lastTrainingMessage?: string | null;
 }
 
 export interface UpdateLearningSettingsRequest {
