@@ -167,7 +167,10 @@ export class DashboardComponent implements AfterViewInit {
                   ...m,
                   [game.kind]: m[game.kind]?.length ? m[game.kind] : [dai],
                 }));
-                this.loadLottoLatestForDais(game.kind as LottoGameKind, this.selectedDaisFor(game.kind));
+                this.loadLottoLatestForDais(
+                  game.kind as LottoGameKind,
+                  this.resolvePredictDaiCodes(game),
+                );
               } else {
                 this.loadLottoLatest(game.kind as LottoGameKind, dai);
               }
@@ -202,7 +205,7 @@ export class DashboardComponent implements AfterViewInit {
       ? this.selectedDaiFor(game.kind) ?? game.daiList[0]?.code
       : undefined;
     if (game.requiresDai && this.isMultiSelectRegion(kind)) {
-      this.loadLottoLatestForDais(kind, this.selectedDaisFor(kind));
+      this.loadLottoLatestForDais(kind, this.resolvePredictDaiCodes(game));
     } else {
       this.loadLottoLatest(kind, dai);
     }
@@ -285,10 +288,35 @@ export class DashboardComponent implements AfterViewInit {
 
   selectedDaisFor(kind: string): string[] {
     if (this.isMultiSelectRegion(kind)) {
-      return this.lottoMultiDaiByKind()[kind] ?? [];
+      const multi = this.lottoMultiDaiByKind()[kind];
+      if (multi?.length) {
+        return multi;
+      }
     }
     const single = this.selectedDaiFor(kind);
     return single ? [single] : [];
+  }
+
+  /** Đài dùng khi bấm dự đoán — luôn có fallback từ chip đang chọn / mặc định. */
+  resolvePredictDaiCodes(game: LottoGameInfo): string[] {
+    if (this.isVietlott(game.kind) || !game.requiresDai) {
+      return [];
+    }
+
+    const fallback = this.selectedDaiFor(game.kind) ?? game.daiList[0]?.code;
+    if (!fallback) {
+      return [];
+    }
+
+    if (this.isMultiSelectRegion(game.kind)) {
+      const multi = this.lottoMultiDaiByKind()[game.kind];
+      if (multi?.length) {
+        return multi;
+      }
+      return [fallback];
+    }
+
+    return [fallback];
   }
 
   isDaiSelected(kind: string, daiCode: string): boolean {
@@ -384,11 +412,11 @@ export class DashboardComponent implements AfterViewInit {
   }
 
   predictLoadingKeyFor(game: LottoGameInfo): string {
-    const selected = this.selectedDaisFor(game.kind);
+    const selected = this.resolvePredictDaiCodes(game);
     if (this.isMultiSelectRegion(game.kind) && selected.length > 1) {
       return `${game.kind}:multi`;
     }
-    return this.lottoResultKey(game.kind, selected[0]);
+    return this.lottoResultKey(game.kind, selected[0] ?? this.selectedDaiFor(game.kind));
   }
 
   formatVietlottNumbers(nums: number[] | undefined | null, kind?: string): string {
@@ -465,15 +493,31 @@ export class DashboardComponent implements AfterViewInit {
     });
   }
 
+  /** Gắn kết quả vào đài user chọn — MB backend trả tên đài kỳ tới, không phải đài đang xem. */
+  private resolveStoredDaiCode(
+    game: LottoGameInfo,
+    item: DaiPredictionResult,
+    requestedCodes: string[],
+    index: number,
+    responseDaiCode?: string | null,
+  ): string | undefined {
+    if (!game.requiresDai) {
+      return undefined;
+    }
+
+    if (this.isMienBac(game.kind)) {
+      return requestedCodes[index] ?? responseDaiCode ?? requestedCodes[0];
+    }
+
+    const byName = game.daiList.find(
+      (d) => d.name === item.dai || d.name.localeCompare(item.dai, 'vi') === 0,
+    )?.code;
+
+    return byName ?? requestedCodes[index] ?? responseDaiCode ?? undefined;
+  }
+
   onRunLottoForecast(game: LottoGameInfo): void {
-    const isMulti = this.isMultiSelectRegion(game.kind);
-    const daiCodes = isMulti
-      ? this.selectedDaisFor(game.kind)
-      : game.requiresDai
-        ? [this.selectedDaiFor(game.kind) ?? game.daiList[0]?.code].filter(
-            (code): code is string => !!code,
-          )
-        : [];
+    const daiCodes = this.resolvePredictDaiCodes(game);
 
     if (!this.isVietlott(game.kind) && daiCodes.length === 0) {
       return;
@@ -496,20 +540,18 @@ export class DashboardComponent implements AfterViewInit {
     this.aiService
       .runLottoForecast({
         gameKind: game.kind as LottoGameKind,
-        daiCode: !isMulti && daiCodes.length === 1 ? daiCodes[0] : null,
-        daiCodes: isMulti && daiCodes.length > 1 ? daiCodes : null,
-        predictAllDais: isMulti && this.isAllDaisSelected(game.kind, game),
+        daiCode: daiCodes.length === 1 ? daiCodes[0] : null,
+        daiCodes: daiCodes.length > 1 ? daiCodes : null,
+        predictAllDais:
+          this.isMultiSelectRegion(game.kind) && this.isAllDaisSelected(game.kind, game),
       })
       .subscribe({
         next: (res) => {
           const results = res.allDais ?? (res.single ? [res.single] : []);
 
-          for (const item of results) {
-            const daiCode = game.requiresDai
-              ? game.daiList.find(
-                  (d) => d.name === item.dai || d.name.localeCompare(item.dai, 'vi') === 0,
-                )?.code
-              : undefined;
+          for (let i = 0; i < results.length; i++) {
+            const item = results[i];
+            const daiCode = this.resolveStoredDaiCode(game, item, daiCodes, i, res.daiCode);
 
             if (game.requiresDai && !daiCode) {
               continue;

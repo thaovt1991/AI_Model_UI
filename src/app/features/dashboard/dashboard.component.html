@@ -293,13 +293,17 @@
                   (click)="onRunLottoForecast(game)"
                   [disabled]="
                     isPredictLoading(game) ||
-                    (isMultiSelectRegion(game.kind) && selectedDaisFor(game.kind).length === 0)
+                    (game.requiresDai &&
+                      !isVietlott(game.kind) &&
+                      resolvePredictDaiCodes(game).length === 0)
                   "
                 >
                   @if (isPredictLoading(game)) {
                     Đang huấn luyện &amp; dự đoán...
-                  } @else if (isMultiSelectRegion(game.kind) && selectedDaisFor(game.kind).length > 1) {
-                    Dự đoán {{ selectedDaisFor(game.kind).length }} đài đã chọn
+                  } @else if (
+                    isMultiSelectRegion(game.kind) && resolvePredictDaiCodes(game).length > 1
+                  ) {
+                    Dự đoán {{ resolvePredictDaiCodes(game).length }} đài đã chọn
                   } @else {
                     Dự đoán kỳ tiếp theo
                   }
@@ -318,7 +322,7 @@
               }
 
               @if (isMultiSelectRegion(game.kind)) {
-                @for (daiCode of selectedDaisFor(game.kind); track daiCode) {
+                @for (daiCode of resolvePredictDaiCodes(game); track daiCode) {
                   <section class="lotto-dai-block">
                     <h4 class="lotto-dai-block__title">{{ resolveDaiName(game, daiCode) }}</h4>
 
