@@ -45,12 +45,153 @@ textarea {
   }
 }
 
-.learning-toast__close {
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font-size: 1.2rem;
-  line-height: 1;
-  cursor: pointer;
-  padding: 0;
+.lotto-actions {
+  margin: 1rem 0;
 }
+
+.lotto-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+
+  &__text {
+    min-width: 0;
+
+    h2 {
+      margin: 0 0 0.35rem;
+    }
+
+    p {
+      margin: 0;
+      color: #64748b;
+      font-size: 0.9rem;
+    }
+  }
+
+  &__settings {
+    flex-shrink: 0;
+  }
+}
+
+.lotto-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+
+  &__btn {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.15rem;
+    padding: 0.55rem 0.85rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #fff;
+    cursor: pointer;
+    text-align: left;
+    min-width: 8.5rem;
+
+    strong {
+      font-size: 0.82rem;
+      color: #0f172a;
+    }
+
+    small {
+      font-size: 0.72rem;
+      color: #64748b;
+    }
+
+    &--active {
+      border-color: #2563eb;
+      background: #eff6ff;
+      box-shadow: 0 0 0 1px #2563eb;
+    }
+
+    &--xs-mien-bac.lotto-tabs__btn--active { border-color: #dc2626; background: #fef2f2; box-shadow: 0 0 0 1px #dc2626; }
+    &--xs-mien-nam.lotto-tabs__btn--active { border-color: #ea580c; background: #fff7ed; box-shadow: 0 0 0 1px #ea580c; }
+    &--xs-mien-trung.lotto-tabs__btn--active { border-color: #ca8a04; background: #fefce8; box-shadow: 0 0 0 1px #ca8a04; }
+    &--vietlott-645.lotto-tabs__btn--active { border-color: #7c3aed; background: #f5f3ff; box-shadow: 0 0 0 1px #7c3aed; }
+    &--vietlott-655.lotto-tabs__btn--active { border-color: #059669; background: #ecfdf5; box-shadow: 0 0 0 1px #059669; }
+  }
+}
+
+.lotto-panel {
+  padding: 1rem;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+
+  &__head h3 {
+    margin: 0 0 0.35rem;
+    font-size: 1.05rem;
+  }
+
+  &__head p {
+    margin: 0 0 0.75rem;
+    font-size: 0.88rem;
+    color: #475569;
+    line-height: 1.45;
+  }
+
+  &--xs-mien-bac { border-top: 3px solid #dc2626; }
+  &--xs-mien-nam { border-top: 3px solid #ea580c; }
+  &--xs-mien-trung { border-top: 3px solid #ca8a04; }
+  &--vietlott-645 { border-top: 3px solid #7c3aed; }
+  &--vietlott-655 { border-top: 3px solid #059669; }
+}
+
+.lotto-dai {
+  margin-bottom: 0.75rem;
+
+  &__label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #334155;
+    margin-bottom: 0.45rem;
+  }
+
+  &__grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  &__chip {
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    border-radius: 999px;
+    padding: 0.35rem 0.75rem;
+    font-size: 0.8rem;
+    cursor: pointer;
+
+    &--active {
+      background: #0f172a;
+      color: #fff;
+      border-color: #0f172a;
+    }
+
+    &--all {
+      font-weight: 600;
+      border-style: dashed;
+    }
+
+    &--view {
+      box-shadow: inset 0 0 0 2px #fff;
+    }
+  }
+}
+
+.lotto-result__numbers {
+  font-size: 1.35rem;
+  letter-spacing: 0.06em;
+}
+
+.lotto-result--xs-mien-bac .lotto-result__numbers { color: #b91c1c; }
+.lotto-result--xs-mien-nam .lotto-result__numbers { color: #c2410c; }
+.lotto-result--xs-mien-trung .lotto-result__numbers { color: #a16207; }
+.lotto-result--vietlott-645 .lotto-result__numbers { color: #6d28d9; }
+.lotto-result--vietlott-655 .lotto-result__numbers { color: #047857; }
