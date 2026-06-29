@@ -290,7 +290,7 @@
                 <button
                   type="button"
                   class="btn btn--primary"
-                  (click)="onRunLottoForecast(game)"
+                  (click)="onRunLottoForecast(game, isMienBac(game.kind) ? selectedDaiFor(game.kind) : undefined)"
                   [disabled]="
                     isPredictLoading(game) ||
                     (game.requiresDai &&

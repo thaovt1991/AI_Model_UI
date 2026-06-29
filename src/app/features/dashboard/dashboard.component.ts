@@ -201,6 +201,10 @@ export class DashboardComponent implements AfterViewInit {
     if (!game) {
       return;
     }
+    if (this.isVietlott(kind)) {
+      this.loadLottoLatest(kind);
+      return;
+    }
     const dai = game.requiresDai
       ? this.selectedDaiFor(game.kind) ?? game.daiList[0]?.code
       : undefined;
@@ -516,8 +520,11 @@ export class DashboardComponent implements AfterViewInit {
     return byName ?? requestedCodes[index] ?? responseDaiCode ?? undefined;
   }
 
-  onRunLottoForecast(game: LottoGameInfo): void {
-    const daiCodes = this.resolvePredictDaiCodes(game);
+  onRunLottoForecast(game: LottoGameInfo, mbActiveDaiCode?: string): void {
+    const daiCodes =
+      this.isMienBac(game.kind) && mbActiveDaiCode
+        ? [mbActiveDaiCode]
+        : this.resolvePredictDaiCodes(game);
 
     if (!this.isVietlott(game.kind) && daiCodes.length === 0) {
       return;
@@ -558,11 +565,18 @@ export class DashboardComponent implements AfterViewInit {
             }
 
             const key = this.lottoResultKey(game.kind, daiCode);
-            this.lottoResults.update((m) => ({ ...m, [key]: item }));
+            const storedItem: DaiPredictionResult =
+              this.isMienBac(game.kind) && daiCode
+                ? { ...item, dai: this.resolveDaiName(game, daiCode) }
+                : item;
+            this.lottoResults.update((m) => ({ ...m, [key]: storedItem }));
             this.lottoLatestByKey.update((m) => ({
               ...m,
               [key]: {
-                dai: item.dai,
+                dai:
+                  this.isMienBac(game.kind) && daiCode
+                    ? this.resolveDaiName(game, daiCode)
+                    : item.dai,
                 ngayQuay: item.ngayQuayTruoc,
                 kyQuay: item.kyQuayTruoc,
                 cacSoDaVe: item.ketQuaKyTruoc,
@@ -572,7 +586,10 @@ export class DashboardComponent implements AfterViewInit {
                 tatCaLoVe: item.tatCaLoVeKyTruoc,
               },
             }));
-            this.loadLottoLatest(game.kind as LottoGameKind, daiCode);
+            this.loadLottoLatest(
+              game.kind as LottoGameKind,
+              this.isVietlott(game.kind) ? undefined : daiCode,
+            );
           }
 
           this.lottoLoadingKey.set(null);
