@@ -14,6 +14,7 @@ import { AiService } from '../../core/services/ai.service';
 import { createId } from '../../core/utils/id.util';
 import {
   ChatMessage,
+  ChatStreamMeta,
   ChatTurn,
   DocumentInfo,
   LearningSettingsResponse,
@@ -55,7 +56,24 @@ function loadLearningNotifySettings(): LearningNotifySettings {
 const initialLearningNotifySettings = loadLearningNotifySettings();
 
 const WELCOME_MESSAGE =
-  'Xin chào! Tôi là trợ lý AI chạy trên máy của bạn. Hãy đặt câu hỏi, nhờ viết hoặc phân tích nội dung — bạn cũng có thể đính kèm tài liệu trong phần Thiết lập.';
+  'Xin chào! Tôi là trợ lý AI chạy trên máy của bạn. Hãy đặt câu hỏi, nhờ viết hoặc phân tích nội dung — bạn cũng có thể đính kèm tài liệu và bật Research mạng trong phần Thiết lập / thanh chat.';
+
+export type WebResearchMode = 'auto' | 'on' | 'off';
+
+const WEB_RESEARCH_MODE_KEY = 'ai_web_research_mode';
+const DEEP_RESEARCH_KEY = 'ai_deep_research_enabled';
+
+function loadWebResearchMode(): WebResearchMode {
+  const raw = localStorage.getItem(WEB_RESEARCH_MODE_KEY);
+  if (raw === 'on' || raw === 'off' || raw === 'auto') {
+    return raw;
+  }
+  return 'auto';
+}
+
+function loadDeepResearchEnabled(): boolean {
+  return localStorage.getItem(DEEP_RESEARCH_KEY) === '1';
+}
 
 @Component({
   selector: 'app-chat',
@@ -112,6 +130,38 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   readonly hasSelectedDocuments = computed(() => this.selectedDocumentIds().length > 0);
   readonly settingsModalOpen = signal(false);
   readonly settingsTab = signal<SettingsModalTab>('documents');
+
+  /** auto = Backend tự nhận diện; on = luôn research; off = tắt */
+  readonly webResearchMode = signal<WebResearchMode>(loadWebResearchMode());
+  readonly webResearchLabel = computed(() => {
+    switch (this.webResearchMode()) {
+      case 'on':
+        return 'Research: Bật';
+      case 'off':
+        return 'Research: Tắt';
+      default:
+        return 'Research: Tự động';
+    }
+  });
+  readonly webResearchHint = computed(() => {
+    switch (this.webResearchMode()) {
+      case 'on':
+        return 'Đang luôn tìm kiếm mạng trước khi trả lời';
+      case 'off':
+        return 'Research mạng đang tắt';
+      default:
+        return 'Tự research khi câu hỏi cần dữ liệu mạng / thời sự';
+    }
+  });
+
+  /**
+   * Deep Research: nhiều truy vấn phụ + nhiều nguồn + citation.
+   * Khi bật sẽ ép research mạng (bỏ qua chế độ Tắt của Research thường).
+   */
+  readonly deepResearchEnabled = signal(loadDeepResearchEnabled());
+  readonly deepResearchLabel = computed(() =>
+    this.deepResearchEnabled() ? 'Deep Research: Bật' : 'Deep Research: Tắt',
+  );
 
   readonly learningEnabled = signal(false);
   readonly learningCollectData = signal(true);
@@ -343,11 +393,21 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
     const docIds = this.selectedDocumentIds();
     const conversationId = this.chatConversationId();
     const profileId = this.chatProfileId();
+    const researchMode = this.webResearchMode();
+    const deepResearch = this.deepResearchEnabled();
+    // Deep Research luôn cần web; nếu Deep bật mà Research=Tắt → vẫn gửi true
+    const enableWebSearch = deepResearch
+      ? true
+      : researchMode === 'on'
+        ? true
+        : researchMode === 'off'
+          ? false
+          : null;
 
     this.messages.update((list) => [
       ...list,
       { role: 'user', content: text },
-      { role: 'assistant', content: '' },
+      { role: 'assistant', content: '', statusText: 'Đang chuẩn bị...', citations: [] },
     ]);
     this.chatInput.set('');
     this.chatLoading.set(true);
@@ -362,12 +422,18 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
           documentIds: docIds.length > 0 ? docIds : undefined,
           conversationId,
           profileId,
+          enableWebSearch,
+          deepResearch,
         },
         (token) => {
           this.appendToLastAssistantMessage(token);
         },
+        (meta) => {
+          this.applyStreamMeta(meta);
+        },
       );
 
+      this.clearLastAssistantStatus();
       this.markMockReplyIfNeeded();
     } catch {
       this.chatError.set('Không mở được stream chat. Kiểm tra Backend và cấu hình CORS.');
@@ -376,6 +442,74 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
       this.chatLoading.set(false);
       this.focusChatInput();
     }
+  }
+
+  cycleWebResearchMode(): void {
+    const next: Record<WebResearchMode, WebResearchMode> = {
+      auto: 'on',
+      on: 'off',
+      off: 'auto',
+    };
+    const mode = next[this.webResearchMode()];
+    this.webResearchMode.set(mode);
+    localStorage.setItem(WEB_RESEARCH_MODE_KEY, mode);
+  }
+
+  toggleDeepResearch(): void {
+    const next = !this.deepResearchEnabled();
+    this.deepResearchEnabled.set(next);
+    localStorage.setItem(DEEP_RESEARCH_KEY, next ? '1' : '0');
+  }
+
+  /** Xử lý meta từ Backend: cập nhật status / gắn citations vào bubble đang stream */
+  private applyStreamMeta(meta: ChatStreamMeta): void {
+    if (meta.type === 'status' && meta.message) {
+      this.messages.update((list) => {
+        if (list.length === 0) {
+          return list;
+        }
+        const copy = [...list];
+        const last = { ...copy[copy.length - 1] };
+        if (last.role === 'assistant') {
+          last.statusText = meta.message ?? null;
+          copy[copy.length - 1] = last;
+        }
+        return copy;
+      });
+      this.scrollChatToBottom();
+      return;
+    }
+
+    if (meta.type === 'citations' && meta.items?.length) {
+      this.messages.update((list) => {
+        if (list.length === 0) {
+          return list;
+        }
+        const copy = [...list];
+        const last = { ...copy[copy.length - 1] };
+        if (last.role === 'assistant') {
+          last.citations = meta.items ?? [];
+          copy[copy.length - 1] = last;
+        }
+        return copy;
+      });
+      this.scrollChatToBottom();
+    }
+  }
+
+  private clearLastAssistantStatus(): void {
+    this.messages.update((list) => {
+      if (list.length === 0) {
+        return list;
+      }
+      const copy = [...list];
+      const last = { ...copy[copy.length - 1] };
+      if (last.role === 'assistant') {
+        last.statusText = null;
+        copy[copy.length - 1] = last;
+      }
+      return copy;
+    });
   }
 
   onChatKeydown(event: KeyboardEvent): void {

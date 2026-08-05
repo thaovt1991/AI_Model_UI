@@ -541,7 +541,7 @@
 .chat__input-row {
   flex-shrink: 0;
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: auto 1fr auto;
   gap: 0.75rem;
   align-items: end;
 
@@ -562,8 +562,109 @@
   }
 }
 
+.chat__toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.chat__research-toggle {
+  min-width: 7.5rem;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  border-color: #94a3b8;
+  padding: 0.35rem 0.55rem;
+
+  &--on {
+    border-color: #2563eb;
+    color: #1d4ed8;
+    background: #eff6ff;
+  }
+
+  &--off {
+    opacity: 0.7;
+  }
+}
+
 .chat__send {
   min-width: 4.5rem;
+}
+
+.chat__status {
+  margin: 0 0 0.35rem;
+  font-size: 0.85rem;
+  color: #475569;
+  font-style: italic;
+}
+
+.chat__citations {
+  margin-top: 0.75rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.chat__citations-title {
+  margin: 0 0 0.4rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.chat__citations-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.chat__citation {
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: #334155;
+
+  a {
+    color: #1d4ed8;
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}
+
+.chat__citation-id {
+  font-weight: 600;
+  margin-right: 0.25rem;
+}
+
+.chat__citation-meta {
+  display: block;
+  color: #64748b;
+  font-size: 0.72rem;
+}
+
+.chat__citation-snippet {
+  display: block;
+  margin-top: 0.15rem;
+  color: #475569;
+}
+
+.settings-divider {
+  border: none;
+  border-top: 1px solid #e2e8f0;
+  margin: 1.25rem 0;
+}
+
+@media (max-width: 720px) {
+  .chat__input-row {
+    grid-template-columns: 1fr;
+  }
+
+  .chat__toolbar {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
 }
 
 @keyframes pulse {

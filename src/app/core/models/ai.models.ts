@@ -154,12 +154,41 @@ export interface ChatRequest {
   documentIds?: string[];
   conversationId?: string;
   profileId?: string;
+  /** null/undefined = tự động; true = luôn research; false = tắt */
+  enableWebSearch?: boolean | null;
+  /** true = Deep Research (nhiều truy vấn + nhiều nguồn) */
+  deepResearch?: boolean;
 }
 
 export interface ChatResponse {
   reply: string;
   isMock: boolean;
   historyTurns?: number;
+  usedWebResearch?: boolean;
+  webSourceCount?: number;
+  usedDeepResearch?: boolean;
+  citations?: CitationSource[];
+}
+
+/** Nguồn trích dẫn (tài liệu hoặc web) — khớp CitationSource backend */
+export interface CitationSource {
+  id: number;
+  kind: 'document' | 'web' | string;
+  title: string;
+  url?: string | null;
+  fileName?: string | null;
+  chunkIndex?: number | null;
+  snippet: string;
+  score: number;
+  sourceLabel: string;
+}
+
+/** Meta xen trong stream: [[AI_META]]{...}[[/AI_META]] */
+export interface ChatStreamMeta {
+  type: 'status' | 'citations' | 'phase' | string;
+  phase?: string | null;
+  message?: string | null;
+  items?: CitationSource[] | null;
 }
 
 export interface ChatTurn {
@@ -171,6 +200,9 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   isMock?: boolean;
+  /** Trạng thái tạm khi đang research/RAG */
+  statusText?: string | null;
+  citations?: CitationSource[];
 }
 
 export interface DocumentInfo {
@@ -190,7 +222,7 @@ export interface DocumentUploadResponse {
   preview: string;
 }
 
-export type DashboardTab = 'predict' | 'chat';
+export type DashboardTab = 'predict' | 'coin' | 'chat';
 
 export type SettingsModalTab = 'ai' | 'documents' | 'learning' | 'memory';
 
@@ -220,4 +252,59 @@ export interface ChatProfileSettingsResponse {
 
 export interface UpdateChatProfileSettingsRequest {
   aiName?: string | null;
+}
+
+/* ========== Coin forecast ========== */
+
+export interface CoinInfo {
+  symbol: string;
+  name: string;
+  quote: string;
+  binancePair: string;
+  description: string;
+}
+
+export interface CoinRunRequest {
+  symbol: string;
+  interval?: string;
+  lookback?: number;
+}
+
+export interface CoinCandleDto {
+  openTimeUtc: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export interface CoinModelBreakdown {
+  lightGbmPredictedClose: number;
+  ssaPredictedClose: number;
+  lightGbmWeight: number;
+  ssaWeight: number;
+  lightGbmNote: string;
+  ssaNote: string;
+}
+
+export interface CoinForecastResponse {
+  symbol: string;
+  name: string;
+  interval: string;
+  algorithm: string;
+  lastCandleUtc: string;
+  lastClose: number;
+  predictedClose: number;
+  predictedChangePct: number;
+  direction: string;
+  confidence: number;
+  support: number;
+  resistance: number;
+  rsi14: number;
+  macdHistogram: number;
+  candlesUsed: number;
+  message: string;
+  recentCandles?: CoinCandleDto[] | null;
+  breakdown?: CoinModelBreakdown | null;
 }

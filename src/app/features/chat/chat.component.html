@@ -2,11 +2,14 @@
   <div class="panel__header">
     <div class="panel__header-text">
       <h2>{{ chatTitle() }}</h2>
-      <p class="panel__header-sub">Trợ lý AI chạy local — hỏi đáp, viết và phân tích văn bản</p>
+      <p class="panel__header-sub">Trợ lý AI chạy local — hỏi đáp, viết, phân tích và research mạng</p>
       @if (hasSelectedDocuments()) {
         <p class="panel__header-hint">
           Đang dùng {{ selectedDocumentIds().length }} tài liệu làm ngữ cảnh
         </p>
+      }
+      @if (webResearchMode() !== 'off') {
+        <p class="panel__header-hint">{{ webResearchHint() }}</p>
       }
     </div>
     <div class="panel__header-actions">
@@ -166,6 +169,42 @@
                 </button>
               }
             </div>
+
+            <hr class="settings-divider" />
+
+            <p class="learning-panel__intro">
+              <strong>Research mạng</strong> — AI tìm DuckDuckGo + Wikipedia rồi trả lời dựa trên
+              dữ liệu lấy được (không cần API key).
+            </p>
+            <div class="learning-panel__stats">
+              <button
+                type="button"
+                class="btn btn--secondary"
+                (click)="cycleWebResearchMode()"
+                [attr.aria-label]="webResearchLabel()"
+              >
+                {{ webResearchLabel() }}
+              </button>
+            </div>
+            <p class="learning-panel__hint">{{ webResearchHint() }}</p>
+            <p class="learning-panel__hint">
+              Bấm nút để xoay vòng: Tự động → Bật → Tắt. Có thể đổi nhanh ngay trên thanh chat.
+            </p>
+
+            <div class="learning-panel__stats" style="margin-top: 0.75rem">
+              <button
+                type="button"
+                class="btn btn--secondary"
+                (click)="toggleDeepResearch()"
+                [attr.aria-label]="deepResearchLabel()"
+              >
+                {{ deepResearchLabel() }}
+              </button>
+            </div>
+            <p class="learning-panel__hint">
+              Deep Research chạy nhiều truy vấn phụ, gom nguồn, hiện citation dưới câu trả lời.
+              Chậm hơn research thường nhưng đầy đủ hơn.
+            </p>
           </div>
         }
 
@@ -371,10 +410,42 @@
         [class.chat__bubble--assistant]="msg.role === 'assistant'"
       >
         <span class="chat__role">{{ msg.role === 'user' ? 'Bạn' : assistantLabel() }}</span>
+        @if (msg.statusText && msg.role === 'assistant') {
+          <p class="chat__status">{{ msg.statusText }}</p>
+        }
         @if (msg.content) {
           <p>{{ msg.content }}</p>
-        } @else {
+        } @else if (!msg.statusText) {
           <p class="chat__typing">Đang suy nghĩ...</p>
+        }
+        @if (msg.citations?.length) {
+          <div class="chat__citations" aria-label="Nguồn trích dẫn">
+            <p class="chat__citations-title">Nguồn ({{ msg.citations!.length }})</p>
+            <ol class="chat__citations-list">
+              @for (c of msg.citations!; track c.id) {
+                <li class="chat__citation">
+                  <span class="chat__citation-id">[{{ c.id }}]</span>
+                  @if (c.url) {
+                    <a [href]="c.url" target="_blank" rel="noopener noreferrer">{{ c.title }}</a>
+                  } @else {
+                    <strong>{{ c.title }}</strong>
+                  }
+                  <span class="chat__citation-meta">
+                    {{ c.sourceLabel }}
+                    @if (c.kind === 'document' && c.fileName) {
+                      · {{ c.fileName }}
+                    }
+                    @if (c.score) {
+                      · score {{ c.score }}
+                    }
+                  </span>
+                  @if (c.snippet) {
+                    <span class="chat__citation-snippet">{{ c.snippet }}</span>
+                  }
+                </li>
+              }
+            </ol>
+          </div>
         }
         @if (msg.isMock) {
           <small class="chat__mock">Phản hồi mock (chưa có file .gguf)</small>
@@ -388,10 +459,35 @@
   }
 
   <div class="chat__input-row">
+    <div class="chat__toolbar">
+      <button
+        type="button"
+        class="btn btn--secondary chat__research-toggle"
+        [class.chat__research-toggle--on]="webResearchMode() === 'on'"
+        [class.chat__research-toggle--off]="webResearchMode() === 'off'"
+        (click)="cycleWebResearchMode()"
+        [disabled]="chatLoading()"
+        [title]="webResearchHint()"
+        [attr.aria-label]="webResearchLabel()"
+      >
+        {{ webResearchLabel() }}
+      </button>
+      <button
+        type="button"
+        class="btn btn--secondary chat__research-toggle"
+        [class.chat__research-toggle--on]="deepResearchEnabled()"
+        (click)="toggleDeepResearch()"
+        [disabled]="chatLoading()"
+        title="Deep Research: nhiều truy vấn + citation đầy đủ"
+        [attr.aria-label]="deepResearchLabel()"
+      >
+        {{ deepResearchEnabled() ? 'Deep: Bật' : 'Deep: Tắt' }}
+      </button>
+    </div>
     <textarea
       #chatInputBox
       rows="2"
-      placeholder="Nhắn tin cho trợ lý AI..."
+      placeholder="Nhắn tin cho trợ lý AI... (vd: Tin tức AI mới nhất năm 2026)"
       [ngModel]="chatInput()"
       (ngModelChange)="chatInput.set($event)"
       (keydown)="onChatKeydown($event)"

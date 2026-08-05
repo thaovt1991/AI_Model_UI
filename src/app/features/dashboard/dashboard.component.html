@@ -26,10 +26,23 @@
         [class.tabs__btn--active]="activeTab() === 'predict'"
         (click)="setTab('predict')"
       >
-        <span class="tabs__icon">ML</span>
+        <span class="tabs__icon">XS</span>
         <span>
           <strong>Dự đoán xổ số</strong>
           <small>XS &amp; Vietlott — SSA</small>
+        </span>
+      </button>
+      <button
+        type="button"
+        role="tab"
+        class="tabs__btn"
+        [class.tabs__btn--active]="activeTab() === 'coin'"
+        (click)="setTab('coin')"
+      >
+        <span class="tabs__icon">$</span>
+        <span>
+          <strong>Dự đoán Coin</strong>
+          <small>GBDT + SSA · Chart</small>
         </span>
       </button>
     </nav>
@@ -669,6 +682,467 @@
               }
             </div>
           }
+        }
+      </section>
+    }
+
+    @if (activeTab() === 'coin') {
+      <section class="panel panel--coin" aria-label="Dự đoán coin">
+        <div class="panel__header lotto-header">
+          <div class="panel__header-text">
+            <h2>Dự đoán Coin</h2>
+            <p class="panel__header-sub">
+              Ensemble <strong>FastTree GBDT</strong> (họ LightGBM/XGBoost + technical indicators) +
+              <strong>SSA</strong> (xu hướng) — dữ liệu nến Binance realtime
+            </p>
+          </div>
+        </div>
+
+        <div class="coin-controls">
+          <div class="form__field coin-picker">
+            <span>Coin ({{ coinCatalog().length || '…' }})</span>
+            <div class="coin-picker__box">
+              <button
+                type="button"
+                class="coin-picker__selected"
+                (click)="openCoinPicker()"
+                [disabled]="coinLoading() || coinCatalogLoading()"
+              >
+                @if (activeCoin(); as c) {
+                  <strong>{{ c.symbol }}</strong>
+                  <span>{{ c.name }}</span>
+                } @else if (coinCatalogLoading()) {
+                  Đang tải danh sách Binance...
+                } @else {
+                  Chọn coin
+                }
+              </button>
+              <input
+                type="search"
+                class="coin-picker__search"
+                placeholder="Tìm BTC, ETH, PEPE, Solana..."
+                [ngModel]="coinSearch()"
+                (ngModelChange)="onCoinSearchInput($event)"
+                (focus)="openCoinPicker()"
+                (keydown)="onCoinSearchKeydown($event)"
+                [disabled]="coinLoading() || coinCatalogLoading()"
+                autocomplete="off"
+                aria-label="Tìm kiếm coin"
+              />
+              @if (coinPickerOpen()) {
+                <div class="coin-picker__dropdown" role="listbox">
+                  <p class="coin-picker__hint">{{ coinCatalogCountLabel() }}</p>
+                  @if (filteredCoinCatalog().length === 0) {
+                    <p class="coin-picker__empty">Không tìm thấy coin phù hợp.</p>
+                  } @else {
+                    @for (c of filteredCoinCatalog(); track c.symbol) {
+                      <button
+                        type="button"
+                        class="coin-picker__option"
+                        [class.coin-picker__option--active]="c.symbol === coinSymbol()"
+                        role="option"
+                        (click)="selectCoin(c.symbol)"
+                      >
+                        <strong>{{ c.symbol }}</strong>
+                        <span>{{ c.name }}</span>
+                        <small>{{ c.binancePair }}</small>
+                      </button>
+                    }
+                  }
+                </div>
+              }
+            </div>
+          </div>
+
+          <label class="form__field">
+            <span>Khung nến</span>
+            <select
+              [ngModel]="coinInterval()"
+              (ngModelChange)="coinInterval.set($event)"
+              [disabled]="coinLoading()"
+            >
+              <option value="15m">15 phút</option>
+              <option value="1h">1 giờ</option>
+              <option value="4h">4 giờ</option>
+              <option value="1d">1 ngày</option>
+            </select>
+          </label>
+
+          <label class="form__field">
+            <span>Số nến học</span>
+            <select
+              [ngModel]="coinLookback()"
+              (ngModelChange)="coinLookback.set(+$event)"
+              [disabled]="coinLoading()"
+            >
+              <option value="200">200</option>
+              <option value="350">350</option>
+              <option value="500">500</option>
+              <option value="750">750</option>
+              <option value="1000">1000</option>
+            </select>
+          </label>
+
+          <button
+            type="button"
+            class="btn btn--primary coin-run"
+            (click)="onRunCoinForecast()"
+            [disabled]="coinLoading() || !coinSymbol()"
+          >
+            @if (coinLoading()) {
+              Đang huấn luyện...
+            } @else {
+              Chạy dự đoán
+            }
+          </button>
+        </div>
+
+        @if (activeCoin(); as coin) {
+          <p class="coin-desc">{{ coin.description }} · Pair {{ coin.binancePair }}</p>
+        }
+
+        @if (coinError()) {
+          <p class="alert alert--error">{{ coinError() }}</p>
+        }
+
+        @if (coinResult(); as r) {
+          <div class="coin-chart-wrap">
+            <div class="coin-chart-toolbar">
+              <div class="coin-chart-toolbar__left">
+                <strong>{{ r.symbol }}/USDT</strong>
+                <span>{{ r.interval }} · {{ r.recentCandles?.length || 0 }} nến</span>
+              </div>
+              <div class="coin-chart-modes" role="group" aria-label="Kiểu biểu đồ">
+                <button
+                  type="button"
+                  class="coin-chart-modes__btn"
+                  [class.coin-chart-modes__btn--active]="coinChartMode() === 'candle'"
+                  (click)="coinChartMode.set('candle')"
+                >
+                  Nến
+                </button>
+                <button
+                  type="button"
+                  class="coin-chart-modes__btn"
+                  [class.coin-chart-modes__btn--active]="coinChartMode() === 'line'"
+                  (click)="coinChartMode.set('line')"
+                >
+                  Đường
+                </button>
+              </div>
+            </div>
+
+            @if (coinChart(); as chart) {
+              <svg
+                class="coin-chart"
+                [attr.viewBox]="'0 0 ' + chart.width + ' ' + chart.height"
+                role="img"
+                [attr.aria-label]="'Biểu đồ dự đoán ' + r.symbol"
+              >
+                <defs>
+                  <linearGradient id="predZoneGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.35" />
+                    <stop offset="50%" stop-color="#f59e0b" stop-opacity="0.18" />
+                    <stop offset="100%" stop-color="#f59e0b" stop-opacity="0.35" />
+                  </linearGradient>
+                  <linearGradient id="predFutureBg" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.06" />
+                    <stop offset="100%" stop-color="#f59e0b" stop-opacity="0.16" />
+                  </linearGradient>
+                </defs>
+
+                <!-- nền lưới -->
+                @for (g of chart.gridY; track g.y) {
+                  <line
+                    class="coin-chart__grid"
+                    [attr.x1]="chart.padL"
+                    [attr.x2]="chart.width - chart.padR"
+                    [attr.y1]="g.y"
+                    [attr.y2]="g.y"
+                  />
+                  <text class="coin-chart__axis" [attr.x]="chart.width - chart.padR + 6" [attr.y]="g.y + 4">
+                    {{ g.label }}
+                  </text>
+                }
+
+                <!-- hỗ trợ / kháng cự -->
+                @if (chart.supportY != null) {
+                  <line
+                    class="coin-chart__sr coin-chart__sr--support"
+                    [attr.x1]="chart.padL"
+                    [attr.x2]="chart.width - chart.padR"
+                    [attr.y1]="chart.supportY"
+                    [attr.y2]="chart.supportY"
+                  />
+                  <text
+                    class="coin-chart__sr-label coin-chart__sr-label--sup"
+                    [attr.x]="chart.padL + 4"
+                    [attr.y]="chart.supportY - 4"
+                  >
+                    Hỗ trợ {{ formatUsd(r.support) }}
+                  </text>
+                }
+                @if (chart.resistanceY != null) {
+                  <line
+                    class="coin-chart__sr coin-chart__sr--resistance"
+                    [attr.x1]="chart.padL"
+                    [attr.x2]="chart.width - chart.padR"
+                    [attr.y1]="chart.resistanceY"
+                    [attr.y2]="chart.resistanceY"
+                  />
+                  <text
+                    class="coin-chart__sr-label coin-chart__sr-label--res"
+                    [attr.x]="chart.padL + 4"
+                    [attr.y]="chart.resistanceY - 4"
+                  >
+                    Kháng cự {{ formatUsd(r.resistance) }}
+                  </text>
+                }
+
+                @if (coinChartMode() === 'line') {
+                  <path class="coin-chart__area" [attr.d]="chart.areaPath" />
+                  <path class="coin-chart__line" [attr.d]="chart.linePath" />
+                } @else {
+                  @for (c of chart.candles; track $index) {
+                    <line
+                      class="coin-chart__wick"
+                      [attr.x1]="c.x"
+                      [attr.x2]="c.x"
+                      [attr.y1]="c.highY"
+                      [attr.y2]="c.lowY"
+                    />
+                    <rect
+                      class="coin-chart__body"
+                      [class.coin-chart__body--up]="c.bullish"
+                      [class.coin-chart__body--down]="!c.bullish"
+                      [attr.x]="c.x - c.halfW"
+                      [attr.y]="c.bodyTop"
+                      [attr.width]="c.halfW * 2"
+                      [attr.height]="c.bodyH"
+                    />
+                  }
+                }
+
+                <!-- ===== VÙNG DỰ ĐOÁN (nổi bật) ===== -->
+                @if (chart.predZone; as z) {
+                  <!-- nền cột tương lai -->
+                  <rect
+                    class="coin-chart__future-bg"
+                    [attr.x]="z.x0"
+                    y="28"
+                    [attr.width]="z.x1 - z.x0"
+                    height="250"
+                    fill="url(#predFutureBg)"
+                  />
+
+                  <!-- vạch ngăn Hiện tại | Dự đoán -->
+                  <line
+                    class="coin-chart__divider"
+                    [attr.x1]="z.dividerX"
+                    [attr.x2]="z.dividerX"
+                    y1="28"
+                    y2="278"
+                  />
+                  <text class="coin-chart__divider-label" [attr.x]="z.dividerX + 6" y="42">
+                    Vùng dự đoán
+                  </text>
+
+                  <!-- band bất định quanh giá dự báo -->
+                  <rect
+                    class="coin-chart__pred-zone"
+                    [attr.x]="z.x0"
+                    [attr.y]="z.yTop"
+                    [attr.width]="z.x1 - z.x0"
+                    [attr.height]="z.zoneH"
+                    fill="url(#predZoneGrad)"
+                  />
+                  <line
+                    class="coin-chart__pred-zone-edge"
+                    [attr.x1]="z.x0"
+                    [attr.x2]="z.x1"
+                    [attr.y1]="z.yTop"
+                    [attr.y2]="z.yTop"
+                  />
+                  <line
+                    class="coin-chart__pred-zone-edge"
+                    [attr.x1]="z.x0"
+                    [attr.x2]="z.x1"
+                    [attr.y1]="z.yBottom"
+                    [attr.y2]="z.yBottom"
+                  />
+
+                  <!-- đường nối giá hiện tại → điểm dự đoán -->
+                  <line
+                    class="coin-chart__proj"
+                    [class.coin-chart__proj--up]="z.direction === 'up'"
+                    [class.coin-chart__proj--down]="z.direction === 'down'"
+                    [attr.x1]="z.lastX"
+                    [attr.y1]="z.lastY"
+                    [attr.x2]="z.predX"
+                    [attr.y2]="z.predY"
+                  />
+
+                  <!-- điểm dự đoán -->
+                  <circle
+                    class="coin-chart__pred-dot"
+                    [class.coin-chart__pred-dot--up]="z.direction === 'up'"
+                    [class.coin-chart__pred-dot--down]="z.direction === 'down'"
+                    [attr.cx]="z.predX"
+                    [attr.cy]="z.predY"
+                    r="6"
+                  />
+                  <circle
+                    class="coin-chart__pred-dot-ring"
+                    [attr.cx]="z.predX"
+                    [attr.cy]="z.predY"
+                    r="11"
+                  />
+
+                  <!-- đường ngang giá mục tiêu -->
+                  <line
+                    class="coin-chart__pred"
+                    [attr.x1]="z.x0"
+                    [attr.x2]="z.x1"
+                    [attr.y1]="z.predY"
+                    [attr.y2]="z.predY"
+                  />
+
+                  <!-- nhãn giá -->
+                  <rect
+                    class="coin-chart__pred-badge"
+                    [attr.x]="z.predX - 70"
+                    [attr.y]="z.predY - 36"
+                    width="140"
+                    height="22"
+                    rx="6"
+                  />
+                  <text
+                    class="coin-chart__pred-badge-text"
+                    [attr.x]="z.predX"
+                    [attr.y]="z.predY - 21"
+                    text-anchor="middle"
+                  >
+                    {{ z.label }}
+                  </text>
+                  <text
+                    class="coin-chart__pred-range"
+                    [attr.x]="z.predX"
+                    [attr.y]="z.yBottom + 14"
+                    text-anchor="middle"
+                  >
+                    Dải: {{ z.rangeLabel }}
+                  </text>
+                }
+
+                <!-- volume -->
+                @for (v of chart.volumes; track $index) {
+                  <rect
+                    class="coin-chart__vol"
+                    [class.coin-chart__vol--up]="v.bullish"
+                    [class.coin-chart__vol--down]="!v.bullish"
+                    [attr.x]="v.x - v.halfW"
+                    [attr.y]="v.y"
+                    [attr.width]="v.halfW * 2"
+                    [attr.height]="v.h"
+                  />
+                }
+
+                @if (chart.timeLabels.length) {
+                  @for (t of chart.timeLabels; track t.x) {
+                    <text class="coin-chart__time" [attr.x]="t.x" [attr.y]="chart.height - 8">
+                      {{ t.label }}
+                    </text>
+                  }
+                }
+              </svg>
+              <div class="coin-chart-legend">
+                <span class="coin-chart-legend__item coin-chart-legend__item--zone">Vùng dự đoán</span>
+                <span class="coin-chart-legend__item coin-chart-legend__item--pred">Giá mục tiêu</span>
+                <span class="coin-chart-legend__item coin-chart-legend__item--res">Kháng cự</span>
+                <span class="coin-chart-legend__item coin-chart-legend__item--sup">Hỗ trợ</span>
+              </div>
+
+              <div class="coin-explain" role="note">
+                <h3>Cách đọc chart</h3>
+                <p>{{ coinExplain(r) }}</p>
+                <ul>
+                  <li>
+                    <strong>Vùng cam</strong>: khoảng giá mô hình kỳ vọng cho nến
+                    {{ r.interval }} tiếp theo (không phải lệnh mua/bán).
+                  </li>
+                  <li>
+                    <strong>Chấm + đường nối</strong>: từ giá đóng nến gần nhất → giá dự báo.
+                  </li>
+                  <li>
+                    <strong>Độ tin cậy {{ (r.confidence * 100) | number: '1.0-0' }}%</strong>:
+                    hai nhánh GBDT &amp; SSA càng đồng thuận / biến động càng ổn thì càng cao.
+                  </li>
+                </ul>
+              </div>
+            }
+          </div>
+
+          <div class="result lotto-result coin-result">
+            <div class="coin-result__hero">
+              <div>
+                <p class="coin-result__label">{{ r.name }} ({{ r.symbol }}/USDT)</p>
+                <p class="coin-result__price">{{ formatUsd(r.predictedClose) }}</p>
+                <p class="coin-result__change" [class]="coinChangeClass()">
+                  {{ r.direction }} · {{ formatPct(r.predictedChangePct) }}
+                </p>
+              </div>
+              <div class="coin-result__meta">
+                <p><span>Giá hiện tại</span><strong>{{ formatUsd(r.lastClose) }}</strong></p>
+                <p><span>Độ tin cậy</span><strong>{{ (r.confidence * 100) | number: '1.0-0' }}%</strong></p>
+                <p><span>Thuật toán</span><strong>{{ r.algorithm }}</strong></p>
+                <p><span>Khung</span><strong>{{ r.interval }} · {{ r.candlesUsed }} nến</strong></p>
+              </div>
+            </div>
+
+            <div class="coin-stats">
+              <div class="coin-stat">
+                <span>RSI(14)</span>
+                <strong>{{ r.rsi14 | number: '1.1-2' }}</strong>
+              </div>
+              <div class="coin-stat">
+                <span>MACD hist</span>
+                <strong>{{ r.macdHistogram | number: '1.2-6' }}</strong>
+              </div>
+              <div class="coin-stat">
+                <span>Hỗ trợ</span>
+                <strong>{{ formatUsd(r.support) }}</strong>
+              </div>
+              <div class="coin-stat">
+                <span>Kháng cự</span>
+                <strong>{{ formatUsd(r.resistance) }}</strong>
+              </div>
+            </div>
+
+            @if (r.breakdown; as b) {
+              <div class="coin-breakdown">
+                <h3>Chi tiết ensemble</h3>
+                <ul>
+                  <li>
+                    <strong>FastTree GBDT</strong> (w={{ b.lightGbmWeight }}) →
+                    {{ formatUsd(b.lightGbmPredictedClose) }}
+                    <small>{{ b.lightGbmNote }}</small>
+                  </li>
+                  <li>
+                    <strong>SSA</strong> (w={{ b.ssaWeight }}) →
+                    {{ formatUsd(b.ssaPredictedClose) }}
+                    <small>{{ b.ssaNote }}</small>
+                  </li>
+                </ul>
+              </div>
+            }
+
+            <p class="coin-disclaimer">{{ r.message }}</p>
+          </div>
+        } @else if (!coinLoading()) {
+          <p class="coin-empty">
+            Chọn coin + khung nến rồi bấm <strong>Chạy dự đoán</strong>. Chart nến/đường sẽ hiện từ dữ liệu
+            Binance realtime cùng kết quả ensemble FastTree + SSA.
+          </p>
         }
       </section>
     }

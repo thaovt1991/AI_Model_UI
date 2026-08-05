@@ -6,6 +6,7 @@ import {
   ChatRequest,
   ChatResponse,
   ChatTurn,
+  ChatStreamMeta,
   DocumentInfo,
   DocumentUploadResponse,
   PredictRequest,
@@ -23,7 +24,65 @@ import {
   LottoLoGanResponse,
   MinhNgocScrapeSettingsResponse,
   UpdateMinhNgocScrapeSettingsRequest,
+  CoinInfo,
+  CoinRunRequest,
+  CoinForecastResponse,
 } from '../models/ai.models';
+
+/** Bắt đầu / kết thúc khối meta trong stream text/plain từ Backend */
+const META_BEGIN = '[[AI_META]]';
+const META_END = '[[/AI_META]]';
+
+/**
+ * Parser stream: tách text thường và khối [[AI_META]]...[[/AI_META]].
+ * Token có thể bị cắt giữa chừng → giữ buffer đến khi đủ 1 khối meta.
+ */
+export class ChatStreamMetaParser {
+  private buffer = '';
+
+  push(
+    chunk: string,
+    onText: (text: string) => void,
+    onMeta: (meta: ChatStreamMeta) => void,
+  ): void {
+    this.buffer += chunk;
+
+    while (true) {
+      const start = this.buffer.indexOf(META_BEGIN);
+      if (start === -1) {
+        if (this.buffer.length > 0) {
+          onText(this.buffer);
+          this.buffer = '';
+        }
+        return;
+      }
+
+      // Text trước meta
+      if (start > 0) {
+        onText(this.buffer.slice(0, start));
+        this.buffer = this.buffer.slice(start);
+      }
+
+      const end = this.buffer.indexOf(META_END);
+      if (end === -1) {
+        // Chưa đủ khối meta — chờ chunk tiếp
+        return;
+      }
+
+      const json = this.buffer.slice(META_BEGIN.length, end);
+      this.buffer = this.buffer.slice(end + META_END.length);
+      if (this.buffer.startsWith('\n')) {
+        this.buffer = this.buffer.slice(1);
+      }
+
+      try {
+        onMeta(JSON.parse(json) as ChatStreamMeta);
+      } catch {
+        // Meta hỏng — bỏ qua, không làm vỡ stream
+      }
+    }
+  }
+}
 
 @Injectable({ providedIn: 'root' })
 export class AiService {
@@ -98,6 +157,18 @@ export class AiService {
     );
   }
 
+  getCoinCatalog(): Observable<CoinInfo[]> {
+    return this.http.get<CoinInfo[]>(`${this.baseUrl}/coin/catalog`);
+  }
+
+  runCoinForecast(request: CoinRunRequest): Observable<CoinForecastResponse> {
+    return this.http.post<CoinForecastResponse>(`${this.baseUrl}/coin/run`, {
+      symbol: request.symbol,
+      interval: request.interval ?? '1h',
+      lookback: request.lookback ?? 500,
+    });
+  }
+
   chat(request: ChatRequest): Observable<ChatResponse> {
     return this.http.post<ChatResponse>(`${this.baseUrl}/chat`, request);
   }
@@ -162,6 +233,7 @@ export class AiService {
   async streamChat(
     request: ChatRequest,
     onToken: (token: string) => void,
+    onMeta?: (meta: ChatStreamMeta) => void,
   ): Promise<void> {
     const response = await fetch(`${this.baseUrl}/chat/stream`, {
       method: 'POST',
@@ -177,6 +249,7 @@ export class AiService {
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder('utf-8');
+    const parser = new ChatStreamMetaParser();
 
     while (true) {
       const { done, value } = await reader.read();
@@ -184,12 +257,28 @@ export class AiService {
         break;
       }
 
-      onToken(decoder.decode(value, { stream: true }));
+      parser.push(
+        decoder.decode(value, { stream: true }),
+        (text) => {
+          if (text) {
+            onToken(text);
+          }
+        },
+        (meta) => onMeta?.(meta),
+      );
     }
 
     const rest = decoder.decode();
     if (rest) {
-      onToken(rest);
+      parser.push(
+        rest,
+        (text) => {
+          if (text) {
+            onToken(text);
+          }
+        },
+        (meta) => onMeta?.(meta),
+      );
     }
   }
 }
