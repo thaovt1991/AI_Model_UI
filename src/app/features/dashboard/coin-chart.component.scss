@@ -1,0 +1,150 @@
+:host {
+  display: block;
+}
+
+.terminal {
+  margin: 0 0 1rem;
+  overflow: hidden;
+  border: 1px solid #1e2329;
+  border-radius: 16px;
+  background: #0b0e11;
+  box-shadow: 0 18px 40px rgba(11, 14, 17, 0.28);
+}
+
+.terminal__bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.85rem 1rem 0.35rem;
+}
+
+.terminal__pair {
+  display: flex;
+  flex-direction: column;
+  min-width: 7.5rem;
+
+  strong {
+    color: #eaecef;
+    font-size: 1rem;
+    letter-spacing: 0.02em;
+  }
+
+  span {
+    color: #848e9c;
+    font-size: 0.75rem;
+  }
+}
+
+.terminal__quote {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  flex: 1;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.78rem;
+  font-weight: 600;
+
+  &--up {
+    color: #0ecb81;
+  }
+
+  &--down {
+    color: #f6465d;
+  }
+}
+
+.terminal__modes {
+  display: flex;
+  padding: 3px;
+  border-radius: 999px;
+  background: #1e2329;
+
+  button {
+    border: 0;
+    background: transparent;
+    color: #848e9c;
+    border-radius: 999px;
+    padding: 0.35rem 0.8rem;
+    font-size: 0.78rem;
+    font-weight: 650;
+    cursor: pointer;
+  }
+
+  .is-on {
+    background: #2b3139;
+    color: #eaecef;
+  }
+}
+
+.terminal__chart {
+  height: 520px;
+  width: 100%;
+}
+
+.terminal__legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.45rem 1rem 0.8rem;
+  color: #848e9c;
+  font-size: 0.75rem;
+
+  span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  em {
+    margin-left: auto;
+    font-style: normal;
+    color: #5e6673;
+  }
+}
+
+.swatch {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 2px;
+
+  &--up {
+    background: #0ecb81;
+  }
+
+  &--down {
+    background: #f6465d;
+  }
+
+  &--pred {
+    background: #f0b90b;
+  }
+
+  &--now {
+    background: #eaecef;
+  }
+
+  &--sup {
+    background: transparent;
+    border: 1.5px dotted #0ecb81;
+  }
+
+  &--res {
+    background: transparent;
+    border: 1.5px dotted #f6465d;
+  }
+}
+
+@media (max-width: 820px) {
+  .terminal__bar {
+    flex-wrap: wrap;
+  }
+
+  .terminal__legend em {
+    margin-left: 0;
+  }
+
+  .terminal__chart {
+    height: 420px;
+  }
+}

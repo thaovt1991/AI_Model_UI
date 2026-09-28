@@ -13,67 +13,14 @@ import {
   MinhNgocScrapeSettingsResponse,
   CoinInfo,
   CoinForecastResponse,
-  CoinCandleDto,
 } from '../../core/models/ai.models';
 import { ChatComponent } from '../chat/chat.component';
-
-export type CoinChartMode = 'candle' | 'line';
-
-interface CoinChartCandleGeom {
-  x: number;
-  highY: number;
-  lowY: number;
-  bodyTop: number;
-  bodyH: number;
-  halfW: number;
-  bullish: boolean;
-}
-
-interface CoinChartVolGeom {
-  x: number;
-  y: number;
-  h: number;
-  halfW: number;
-  bullish: boolean;
-}
-
-interface CoinChartView {
-  width: number;
-  height: number;
-  padL: number;
-  padR: number;
-  candles: CoinChartCandleGeom[];
-  volumes: CoinChartVolGeom[];
-  linePath: string;
-  areaPath: string;
-  gridY: { y: number; label: string }[];
-  timeLabels: { x: number; label: string }[];
-  /** Đường giá dự đoán (tâm) */
-  predY: number | null;
-  supportY: number | null;
-  resistanceY: number | null;
-  /** Vùng dự đoán (band bất định quanh giá dự báo) */
-  predZone: {
-    x0: number;
-    x1: number;
-    yTop: number;
-    yBottom: number;
-    zoneH: number;
-    predX: number;
-    predY: number;
-    lastX: number;
-    lastY: number;
-    dividerX: number;
-    label: string;
-    rangeLabel: string;
-    direction: 'up' | 'down' | 'flat';
-  } | null;
-}
+import { CoinChartComponent, CoinChartMode } from './coin-chart.component';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [FormsModule, DatePipe, DecimalPipe, ChatComponent],
+  imports: [FormsModule, DatePipe, DecimalPipe, ChatComponent, CoinChartComponent],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
 })
@@ -180,16 +127,6 @@ export class DashboardComponent implements AfterViewInit {
       return 'coin-change--down';
     }
     return 'coin-change--flat';
-  });
-
-  /** Geometry SVG chart từ recentCandles + đường dự đoán / SR */
-  readonly coinChart = computed((): CoinChartView | null => {
-    const result = this.coinResult();
-    const candles = result?.recentCandles ?? [];
-    if (!result || candles.length < 2) {
-      return null;
-    }
-    return this.buildCoinChart(candles, result);
   });
 
   readonly predictLoading = signal(false);
@@ -339,154 +276,6 @@ export class DashboardComponent implements AfterViewInit {
     return `${sign}${value.toFixed(3)}%`;
   }
 
-  private buildCoinChart(
-    candles: CoinCandleDto[],
-    result: CoinForecastResponse,
-  ): CoinChartView {
-    const width = 960;
-    const height = 380;
-    const padL = 12;
-    const padR = 88;
-    const padT = 32;
-    const priceBottom = 278;
-    const volTop = 296;
-    const volBottom = 342;
-    const plotW = width - padL - padR;
-
-    // Chừa ~12% bên phải cho vùng dự đoán (nến tương lai)
-    const histRatio = 0.88;
-    const histW = plotW * histRatio;
-    const futureX0 = padL + histW;
-    const futureX1 = width - padR;
-
-    // Band bất định quanh giá dự báo: càng ít tin cậy / biến động mạnh → band rộng hơn
-    const absChange = Math.abs(result.predictedClose - result.lastClose);
-    const uncertaintyPct = Math.max(
-      0.0035,
-      (1 - result.confidence) * 0.028 + absChange / Math.max(result.lastClose, 1e-9) * 0.45,
-    );
-    const predHigh = result.predictedClose * (1 + uncertaintyPct);
-    const predLow = result.predictedClose * (1 - uncertaintyPct);
-
-    const highs = candles.map((c) => c.high);
-    const lows = candles.map((c) => c.low);
-    let minP = Math.min(...lows, result.support, predLow);
-    let maxP = Math.max(...highs, result.resistance, predHigh);
-    if (maxP <= minP) {
-      maxP = minP + 1;
-    }
-    const pad = (maxP - minP) * 0.08;
-    minP -= pad;
-    maxP += pad;
-
-    const maxVol = Math.max(...candles.map((c) => c.volume), 1);
-    const n = candles.length;
-    const step = histW / n;
-    const halfW = Math.max(1.2, Math.min(6, step * 0.35));
-
-    const yPrice = (p: number) =>
-      padT + ((maxP - p) / (maxP - minP)) * (priceBottom - padT);
-
-    const geomCandles: CoinChartCandleGeom[] = [];
-    const volumes: CoinChartVolGeom[] = [];
-    const points: { x: number; y: number }[] = [];
-
-    candles.forEach((c, i) => {
-      const x = padL + step * (i + 0.5);
-      const openY = yPrice(c.open);
-      const closeY = yPrice(c.close);
-      const highY = yPrice(c.high);
-      const lowY = yPrice(c.low);
-      const bullish = c.close >= c.open;
-      const bodyTop = Math.min(openY, closeY);
-      const bodyH = Math.max(1.5, Math.abs(closeY - openY));
-      geomCandles.push({ x, highY, lowY, bodyTop, bodyH, halfW, bullish });
-      points.push({ x, y: closeY });
-
-      const vh = (c.volume / maxVol) * (volBottom - volTop);
-      volumes.push({
-        x,
-        y: volBottom - vh,
-        h: Math.max(1, vh),
-        halfW,
-        bullish,
-      });
-    });
-
-    const linePath = points
-      .map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`)
-      .join(' ');
-    const areaPath =
-      linePath +
-      ` L${points[points.length - 1].x.toFixed(1)},${priceBottom}` +
-      ` L${points[0].x.toFixed(1)},${priceBottom} Z`;
-
-    const gridY: { y: number; label: string }[] = [];
-    for (let i = 0; i < 5; i++) {
-      const t = i / 4;
-      const price = maxP - t * (maxP - minP);
-      gridY.push({ y: yPrice(price), label: this.shortPrice(price) });
-    }
-
-    const timeLabels: { x: number; label: string }[] = [];
-    const labelCount = Math.min(4, n);
-    for (let i = 0; i < labelCount; i++) {
-      const idx = Math.round((i * (n - 1)) / Math.max(1, labelCount - 1));
-      const c = candles[idx];
-      timeLabels.push({
-        x: padL + step * (idx + 0.5),
-        label: this.shortTime(c.openTimeUtc, result.interval),
-      });
-    }
-    timeLabels.push({
-      x: (futureX0 + futureX1) / 2,
-      label: `Nến ${result.interval} tới`,
-    });
-
-    const last = points[points.length - 1];
-    const predY = yPrice(result.predictedClose);
-    const predX = (futureX0 + futureX1) / 2;
-    const dir =
-      result.predictedChangePct > 0.15
-        ? 'up'
-        : result.predictedChangePct < -0.15
-          ? 'down'
-          : 'flat';
-
-    const predZone = {
-      x0: futureX0,
-      x1: futureX1,
-      yTop: yPrice(predHigh),
-      yBottom: yPrice(predLow),
-      zoneH: Math.max(4, yPrice(predLow) - yPrice(predHigh)),
-      predX,
-      predY,
-      lastX: last.x,
-      lastY: last.y,
-      dividerX: futureX0,
-      label: `${this.formatUsd(result.predictedClose)} (${this.formatPct(result.predictedChangePct)})`,
-      rangeLabel: `${this.formatUsd(predLow)} → ${this.formatUsd(predHigh)}`,
-      direction: dir as 'up' | 'down' | 'flat',
-    };
-
-    return {
-      width,
-      height,
-      padL,
-      padR,
-      candles: geomCandles,
-      volumes,
-      linePath,
-      areaPath,
-      gridY,
-      timeLabels,
-      predY,
-      supportY: yPrice(result.support),
-      resistanceY: yPrice(result.resistance),
-      predZone,
-    };
-  }
-
   /** Giải thích ngắn theo kết quả dự đoán — hiện dưới chart */
   coinExplain(r: CoinForecastResponse): string {
     const conf = Math.round(r.confidence * 100);
@@ -498,40 +287,13 @@ export class DashboardComponent implements AfterViewInit {
           : `mô hình thấy biến động nhỏ (đi ngang), khoảng ${this.formatPct(r.predictedChangePct)}`;
 
     return (
-      `Vùng cam bên phải là dự báo cho nến ${r.interval} kế tiếp: giá mục tiêu ` +
+      `Nến vàng bên phải là dự báo cho nến ${r.interval} kế tiếp: giá mục tiêu ` +
       `${this.formatUsd(r.predictedClose)} (độ tin cậy ~${conf}%). ` +
       `Hiện tại ${this.formatUsd(r.lastClose)} — ${move}. ` +
-      `Dải cam rộng/hẹp phản ánh mức bất định (confidence + biến động). ` +
-      `Đường xanh lá = hỗ trợ gần, đỏ = kháng cự gần. ` +
-      `Ensemble: FastTree GBDT (${r.breakdown?.lightGbmWeight ?? 0.7}) học chỉ báo kỹ thuật + ` +
-      `SSA (${r.breakdown?.ssaWeight ?? 0.3}) bắt xu hướng — chỉ mang tính thống kê ngắn hạn.`
+      `Râu nến vàng là dải bất định. Đường đứt = giá mục tiêu, chấm xanh = hỗ trợ, chấm đỏ = kháng cự. ` +
+      `Ensemble: FastTree GBDT (${r.breakdown?.lightGbmWeight ?? 0.7}) + ` +
+      `SSA (${r.breakdown?.ssaWeight ?? 0.3}) — chỉ mang tính thống kê ngắn hạn.`
     );
-  }
-
-  private shortPrice(value: number): string {
-    if (value >= 1000) {
-      return value.toLocaleString('en-US', { maximumFractionDigits: 0 });
-    }
-    if (value >= 1) {
-      return value.toLocaleString('en-US', { maximumFractionDigits: 2 });
-    }
-    return value.toLocaleString('en-US', { maximumFractionDigits: 4 });
-  }
-
-  private shortTime(iso: string, interval: string): string {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) {
-      return '';
-    }
-    if (interval === '1d') {
-      return d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
-    }
-    return d.toLocaleString('vi-VN', {
-      day: '2-digit',
-      month: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
   }
 
   loadScrapeSettings(): void {

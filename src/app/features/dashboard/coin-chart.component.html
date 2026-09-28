@@ -1,0 +1,32 @@
+<section class="terminal" aria-label="Biểu đồ nến">
+  <header class="terminal__bar">
+    <div class="terminal__pair">
+      <strong>{{ forecast().symbol }}/USDT</strong>
+      <span>{{ forecast().interval }} · {{ forecast().recentCandles?.length || 0 }} nến</span>
+    </div>
+
+    <div class="terminal__quote" [class.terminal__quote--up]="quoteUp()" [class.terminal__quote--down]="!quoteUp()">
+      <span>O {{ quote().open | number: '1.2-8' }}</span>
+      <span>H {{ quote().high | number: '1.2-8' }}</span>
+      <span>L {{ quote().low | number: '1.2-8' }}</span>
+      <span>C {{ quote().close | number: '1.2-8' }}</span>
+    </div>
+
+    <div class="terminal__modes" role="group" aria-label="Kiểu biểu đồ">
+      <button type="button" [class.is-on]="mode() === 'candle'" (click)="modeChange.emit('candle')">Nến</button>
+      <button type="button" [class.is-on]="mode() === 'line'" (click)="modeChange.emit('line')">Đường</button>
+    </div>
+  </header>
+
+  <div #host class="terminal__chart"></div>
+
+  <footer class="terminal__legend">
+    <span><i class="swatch swatch--up"></i>Tăng</span>
+    <span><i class="swatch swatch--down"></i>Giảm</span>
+    <span><i class="swatch swatch--pred"></i>Nến dự báo</span>
+    <span><i class="swatch swatch--now"></i>Giá hiện tại</span>
+    <span><i class="swatch swatch--sup"></i>Hỗ trợ</span>
+    <span><i class="swatch swatch--res"></i>Kháng cự</span>
+    <em>Kéo để xem · lăn chuột để phóng</em>
+  </footer>
+</section>
