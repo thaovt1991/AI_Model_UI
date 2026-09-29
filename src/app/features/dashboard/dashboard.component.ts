@@ -290,7 +290,7 @@ export class DashboardComponent implements AfterViewInit {
       `Nến vàng bên phải là dự báo cho nến ${r.interval} kế tiếp: giá mục tiêu ` +
       `${this.formatUsd(r.predictedClose)} (độ tin cậy ~${conf}%). ` +
       `Hiện tại ${this.formatUsd(r.lastClose)} — ${move}. ` +
-      `Râu nến vàng là dải bất định. Đường đứt = giá mục tiêu, chấm xanh = hỗ trợ, chấm đỏ = kháng cự. ` +
+      `Đường vàng bám đỉnh các nến rồi hướng lên. Mũi tên vàng là đỉnh dự báo nến kế. Chấm xanh = hỗ trợ, chấm đỏ = kháng cự. ` +
       `Ensemble: FastTree GBDT (${r.breakdown?.lightGbmWeight ?? 0.7}) + ` +
       `SSA (${r.breakdown?.ssaWeight ?? 0.3}) — chỉ mang tính thống kê ngắn hạn.`
     );

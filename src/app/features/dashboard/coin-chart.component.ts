@@ -183,7 +183,8 @@ export class CoinChartComponent implements AfterViewInit, OnDestroy {
     const up = forecast.predictedChangePct >= 0;
     const predColor = Math.abs(forecast.predictedChangePct) < 0.15 ? '#f0b90b' : up ? '#0ecb81' : '#f6465d';
     const band = uncertaintyBand(forecast);
-    const predHigh = Math.max(forecast.predictedClose, last.close, band.high);
+    const peakTarget = risingPeakTarget(rows, forecast);
+    const predHigh = Math.max(peakTarget, forecast.predictedClose, last.high, band.high);
     const predLow = Math.min(forecast.predictedClose, last.close, band.low);
 
     if (mode === 'line') {
@@ -239,14 +240,27 @@ export class CoinChartComponent implements AfterViewInit, OnDestroy {
           open: last.close,
           close: forecast.predictedClose,
           high: predHigh,
-          low: predLow,
+          low: Math.min(predLow, forecast.predictedClose, last.close),
         },
       ]);
       this.ownedSeries.push(ghost);
     }
 
-    const projection = chart.addSeries(LineSeries, {
-      color: predColor,
+    const peakLine = chart.addSeries(LineSeries, {
+      color: 'rgba(240, 185, 11, 0.95)',
+      lineWidth: 2,
+      lineStyle: LineStyle.Solid,
+      lastValueVisible: false,
+      priceLineVisible: false,
+      crosshairMarkerVisible: false,
+      priceFormat,
+    });
+    peakLine.setData(rows.map((c) => ({ time: c.time, value: c.high })));
+    this.ownedSeries.push(peakLine);
+
+    const risePerBar = Math.max(peakTarget - last.high, last.high * 0.0008);
+    const rise = chart.addSeries(LineSeries, {
+      color: '#f0b90b',
       lineWidth: 2,
       lineStyle: LineStyle.Dashed,
       lastValueVisible: false,
@@ -254,11 +268,13 @@ export class CoinChartComponent implements AfterViewInit, OnDestroy {
       crosshairMarkerVisible: false,
       priceFormat,
     });
-    projection.setData([
-      { time: last.time, value: last.close },
-      { time: nextTime, value: forecast.predictedClose },
+    rise.setData([
+      { time: last.time, value: last.high },
+      { time: nextTime, value: last.high + risePerBar },
+      { time: (last.time + step * 2) as UTCTimestamp, value: last.high + risePerBar * 2 },
+      { time: (last.time + step * 3) as UTCTimestamp, value: last.high + risePerBar * 3 },
     ]);
-    this.ownedSeries.push(projection);
+    this.ownedSeries.push(rise);
 
     const volume = chart.addSeries(HistogramSeries, {
       priceFormat: { type: 'volume' },
@@ -299,6 +315,14 @@ export class CoinChartComponent implements AfterViewInit, OnDestroy {
       title: 'Dự báo',
     });
     anchor.createPriceLine({
+      price: last.high + risePerBar,
+      color: '#f0b90b',
+      lineWidth: 1,
+      lineStyle: LineStyle.Dashed,
+      axisLabelVisible: true,
+      title: 'Đỉnh dự báo',
+    });
+    anchor.createPriceLine({
       price: forecast.support,
       color: '#0ecb81',
       lineWidth: 1,
@@ -315,13 +339,23 @@ export class CoinChartComponent implements AfterViewInit, OnDestroy {
       title: 'Kháng cự',
     });
 
-    createSeriesMarkers(projection, [
+    const pivots = swingHighs(rows, 2).slice(-4);
+    createSeriesMarkers(peakLine, [
+      ...pivots.map((p) => ({
+        time: p.time,
+        position: 'aboveBar' as const,
+        color: '#f0b90b',
+        shape: 'arrowDown' as const,
+        text: '',
+      })),
+    ]);
+    createSeriesMarkers(rise, [
       {
         time: nextTime,
         position: 'aboveBar',
         color: '#f0b90b',
-        shape: 'circle',
-        text: 'Dự báo',
+        shape: 'arrowUp',
+        text: 'Đỉnh lên',
       },
     ]);
 
@@ -367,6 +401,56 @@ function pricePrecision(price: number): number {
     return 6;
   }
   return 8;
+}
+
+/** Đỉnh cục bộ: high cao hơn các nến kề hai bên. */
+function swingHighs(
+  rows: Array<{ time: UTCTimestamp; high: number }>,
+  wing: number,
+): Array<{ time: UTCTimestamp; high: number }> {
+  const peaks: Array<{ time: UTCTimestamp; high: number }> = [];
+  for (let i = wing; i < rows.length - wing; i++) {
+    const high = rows[i].high;
+    let isPeak = true;
+    for (let j = 1; j <= wing; j++) {
+      if (high < rows[i - j].high || high < rows[i + j].high) {
+        isPeak = false;
+        break;
+      }
+    }
+    if (isPeak) {
+      peaks.push(rows[i]);
+    }
+  }
+  return peaks;
+}
+
+/** Đỉnh nến kế tiếp luôn cao hơn đỉnh nến hiện tại, bám độ dốc các đỉnh gần nhất. */
+function risingPeakTarget(
+  rows: Array<{ time: UTCTimestamp; high: number; low: number; close: number }>,
+  forecast: CoinForecastResponse,
+): number {
+  const last = rows[rows.length - 1];
+  const sample = rows.slice(-24);
+  const avgRange =
+    sample.reduce((sum, c) => sum + Math.max(0, c.high - c.low), 0) / Math.max(sample.length, 1);
+  const pivots = swingHighs(rows, 2);
+  let slope = 0;
+  if (pivots.length >= 2) {
+    const a = pivots[pivots.length - 2];
+    const b = pivots[pivots.length - 1];
+    const dt = b.time - a.time;
+    if (dt > 0) {
+      slope = (b.high - a.high) / dt;
+    }
+  }
+  const step = INTERVAL_SECONDS[forecast.interval] ?? 60 * 60;
+  const fromSlope = last.high + slope * step;
+  const minLift = Math.max(avgRange * 0.45, last.high * 0.0012);
+  const modelPeak =
+    forecast.predictedClose > last.high ? forecast.predictedClose + avgRange * 0.2 : last.high + minLift;
+  const slopePeak = slope > 0 ? fromSlope : last.high + minLift;
+  return Math.max(last.high + minLift, slopePeak, modelPeak);
 }
 
 function uncertaintyBand(forecast: CoinForecastResponse): { high: number; low: number } {
